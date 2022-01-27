@@ -1,0 +1,2 @@
+cairo-lang==0.7.0
+pytest
