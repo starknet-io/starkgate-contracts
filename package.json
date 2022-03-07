@@ -1,6 +1,6 @@
 {
-  "name": "starkgate-contracts",
+  "name": "@starkware-industries/starkgate-contracts",
   "version": "0.0.0",
-  "author": "StarkWare info@starkware.co",
+  "author": "Starkware info@starkware.co",
   "license": "ISC"
 }
