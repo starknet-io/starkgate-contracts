@@ -57,7 +57,7 @@ jobs:
         uses: actions/upload-artifact@v2
         with:
           name: package
-          path: ${{ github.workspace }}/node_modules/starkgate-contracts/*.tgz
+          path: ${{ github.workspace }}/node_modules/@starkware-industries/starkgate-contracts/*.tgz
 
   publish:
     if: github.event.base_ref == 'refs/heads/main'
