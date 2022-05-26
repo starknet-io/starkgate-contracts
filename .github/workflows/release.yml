@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - master
+
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@master
+
+      - name: Setup node.js environment
+        uses: actions/setup-node@v1
+        with:
+          node-version: 16.x
+
+      - name: Setup docker daemon
+        uses: docker-practice/actions-setup-docker@1.0.8
+
+      - name: Build Dockerfile with starkgate:latest tag
+        run: |
+          docker build --tag starkgate .
+
+      - name: Run build container in docker
+        run: |
+          docker run --name=build_container -d -it starkgate /bin/bash
+
+      - name: Copy artifacts from build_container
+        run: |
+          mkdir -p release/artifacts
+          docker cp build_container:/app/build/Release/src/starkware/starknet/apps/starkgate/artifacts/. ./release/artifacts
+
+      - name: Prepare release
+        run: |
+          cp package.json release/
+          cd release
+
+      - name: Publish to NPM
+        with:
+          publish: yarn release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

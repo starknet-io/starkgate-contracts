@@ -1,6 +1,9 @@
 {
-  "name": "@starkware-industries/starkgate-contracts",
+  "name": "@chainlink/starkgate-contracts",
   "version": "0.0.0",
   "author": "Starkware info@starkware.co",
-  "license": "ISC"
+  "license": "ISC",
+  "scripts": {
+    "release": "yarn publish --non-interactive"
+  }
 }
