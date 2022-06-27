@@ -1,6 +1,10 @@
 FROM ciimage/python:3.7 as base_image
 
-RUN apt update && apt install -y cmake libgmp3-dev g++ python3-pip python3.7-dev npm
+RUN apt update
+RUN apt -y -o Dpkg::Options::="--force-overwrite" install python3.7-dev
+RUN apt install -y make libgmp3-dev g++ python3-pip npm unzip
+# Installing cmake via apt doesn't bring the most up-to-date version.
+RUN pip install cmake==3.22
 
 # Install solc and ganache
 RUN curl https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.6.12+commit.27d51765 -o /usr/local/bin/solc-0.6.12

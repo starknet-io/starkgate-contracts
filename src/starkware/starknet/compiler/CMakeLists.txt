@@ -1,5 +1,5 @@
 python_venv(starknet_compile_venv
-    PYTHON python3.7
+    PYTHON ${PYTHON_COMMAND}
 
     LIBS
     pip_cairo_lang

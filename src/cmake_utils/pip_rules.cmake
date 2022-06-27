@@ -12,10 +12,13 @@ function(python_pip TARGET)
   cmake_parse_arguments(ARGS "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
   # Create a list of all dependencies regardless of python's version.
-  execute_process(
-    COMMAND ${UNITE_LIBS_EXECUTABLE} ${ARGS_LIBS}
-    OUTPUT_VARIABLE UNITED_LIBS
-  )
+  set(UNITED_LIBS ${ARGS_LIBS})
+  if("${UNITED_LIBS}" MATCHES ":")
+    execute_process(
+      COMMAND ${UNITE_LIBS_EXECUTABLE} ${UNITED_LIBS}
+      OUTPUT_VARIABLE UNITED_LIBS
+    )
+  endif()
   separate_arguments(UNITED_LIBS)
 
   set(ALL_STAMPS)
@@ -31,30 +34,45 @@ function(python_pip TARGET)
     # The filename will have '==' in it.
     set(STAMP_FILE ${CMAKE_BINARY_DIR}/python_pip/${TARGET}_${INTERPRETER}_${REQ}.stamp)
 
-    # Build wheel and prepare library directory.
-    add_custom_command(
-      OUTPUT ${STAMP_FILE}
-      # Download or build wheel.
-      COMMENT "Building wheel ${REQ} for ${INTERPRETER}"
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
-      COMMAND ${CMAKE_COMMAND} -E make_directory ${DOWNLOAD_DIR}
-      COMMAND
-        ${INTERPRETER} -m pip wheel --no-deps -w ${DOWNLOAD_DIR}/ ${REQ} ${PIP_INSTALL_ARGS_${INTERPRETER}}
-      # Extract wheel.
-      COMMAND cd ${LIB_DIR} && ${CMAKE_COMMAND} -E tar xzf ${DOWNLOAD_DIR}/*.whl
-      # Some wheels may put their files at /{name}-{version}.data/(pure|plat)lib/, instead of under
-      # the root directory. See https://www.python.org/dev/peps/pep-0427/#id24.
-      # Copy the files from there. Suppress errors, which happen most of the times when this
-      # subdirectory does not exist.
-      COMMAND cp -r ${LIB_DIR}/*.data/*lib/* ${LIB_DIR}/ > /dev/null 2>&1 || true
-      # Cleanup download.
-      COMMAND ${CMAKE_COMMAND} -E remove_directory ${DOWNLOAD_DIR}
-      # Timestamp.
-      COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
-    )
+    # Creating library directory.
+    if (${REQ} MATCHES "\\+local$")
+        string(REPLACE "==" "-" PACKAGE_NAME ${REQ})
+        set(ZIP_FILE "${PROJECT_SOURCE_DIR}/${PACKAGE_NAME}.zip")
+        add_custom_command(
+          OUTPUT ${STAMP_FILE}
+          COMMENT "Building ${REQ} from a local copy."
+          COMMAND rm -rf ${LIB_DIR}/*
+          COMMAND unzip ${ZIP_FILE} -d ${LIB_DIR} > /dev/null
+          COMMAND mv ${LIB_DIR}/${PACKAGE_NAME}/* ${LIB_DIR}/
+          COMMAND rm -rf ${LIB_DIR}/${PACKAGE_NAME}/
+          COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+          DEPENDS ${ZIP_FILE}
+        )
+    else()
+        add_custom_command(
+          OUTPUT ${STAMP_FILE}
+          # Download or build wheel.
+          COMMENT "Building wheel ${REQ} for ${INTERPRETER}"
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${LIB_DIR}
+          COMMAND ${CMAKE_COMMAND} -E make_directory ${DOWNLOAD_DIR}
+          COMMAND
+            ${INTERPRETER} -m pip wheel --no-deps -w ${DOWNLOAD_DIR}/ ${REQ} ${PIP_INSTALL_ARGS_${INTERPRETER}}
+          # Extract wheel.
+          COMMAND cd ${LIB_DIR} && ${CMAKE_COMMAND} -E tar xzf ${DOWNLOAD_DIR}/*.whl
+          # Some wheels may put their files at /{name}-{version}.data/(pure|plat)lib/, instead of
+          # under the root directory. See https://www.python.org/dev/peps/pep-0427/#id24.
+          # Copy the files from there. Suppress errors, which happen most of the times when this
+          # subdirectory does not exist.
+          COMMAND cp -r ${LIB_DIR}/*.data/*lib/* ${LIB_DIR}/ > /dev/null 2>&1 || true
+          # Cleanup download.
+          COMMAND ${CMAKE_COMMAND} -E remove_directory ${DOWNLOAD_DIR}
+          # Timestamp.
+          COMMAND ${CMAKE_COMMAND} -E touch ${STAMP_FILE}
+        )
+    endif()
 
-    set(ALL_STAMPS ${ALL_STAMPS} ${STAMP_FILE})
-    set(ALL_LIB_DIRS ${ALL_LIB_DIRS} "${INTERPRETER}:${LIB_DIR}")
+    list(APPEND ALL_STAMPS ${STAMP_FILE})
+    list(APPEND ALL_LIB_DIRS "${INTERPRETER}:${LIB_DIR}")
   endforeach()
 
   # Info target.
@@ -91,10 +109,13 @@ function(python_get_pip_deps TARGET)
   set(CMAKE_FILE "${CMAKE_CURRENT_BINARY_DIR}/${TARGET}_generated_rules.cmake")
 
   # Create a list of all dependency files.
-  execute_process(
-    COMMAND ${UNITE_LIBS_EXECUTABLE} ${ARGN}
-    OUTPUT_VARIABLE UNITED_DEP_FILES
-  )
+  set(UNITED_DEP_FILES ${ARGN})
+  if("${UNITED_DEP_FILES}" MATCHES ":")
+    execute_process(
+      COMMAND ${UNITE_LIBS_EXECUTABLE} ${UNITED_DEP_FILES}
+      OUTPUT_VARIABLE UNITED_DEP_FILES
+    )
+  endif()
   separate_arguments(UNITED_DEP_FILES)
 
   # Add as a reconfigure dependency, so that CMake will reconfigure on change.

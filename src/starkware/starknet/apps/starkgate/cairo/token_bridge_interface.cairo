@@ -21,4 +21,10 @@ namespace ITokenBridge:
 
     func initiate_withdraw(l1_recipient : felt, amount : Uint256):
     end
+
+    func get_version() -> (version : felt):
+    end
+
+    func get_identity() -> (identity : felt):
+    end
 end
