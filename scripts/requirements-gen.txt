@@ -1,4 +1,0 @@
-cairo-lang==0.9.0
-coverage<5.0.0
-pytest
-pytest-cov

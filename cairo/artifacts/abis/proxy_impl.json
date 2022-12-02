@@ -1,0 +1,361 @@
+[
+    {
+        "inputs": [],
+        "name": "finalized",
+        "outputs": [
+            {
+                "name": "res",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "data": [
+            {
+                "name": "new_governor_nominee",
+                "type": "felt"
+            },
+            {
+                "name": "nominated_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governor_nominated",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "cancelled_nominee",
+                "type": "felt"
+            },
+            {
+                "name": "cancelled_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "nomination_cancelled",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "removed_governor",
+                "type": "felt"
+            },
+            {
+                "name": "removed_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governor_removed",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "new_governor",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governance_accepted",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "name": "account",
+                "type": "felt"
+            }
+        ],
+        "name": "is_governor",
+        "outputs": [
+            {
+                "name": "is_governor_",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "init_governance",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "nominee",
+                "type": "felt"
+            }
+        ],
+        "name": "nominate_new_governor",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "cancelee",
+                "type": "felt"
+            }
+        ],
+        "name": "cancel_nomination",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "removee",
+                "type": "felt"
+            }
+        ],
+        "name": "remove_governor",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "accept_governance",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "data": [
+            {
+                "name": "implementation_hash",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "implementation_added",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "implementation_hash",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "implementation_removed",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "implementation_hash",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            }
+        ],
+        "keys": [],
+        "name": "implementation_upgraded",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "implementation_hash",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "implementation_finalized",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "implementation",
+        "outputs": [
+            {
+                "name": "implementation_hash_",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "implementation_hash_",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "name": "implementation_time",
+        "outputs": [
+            {
+                "name": "time",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "implementation_hash_",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "name": "add_implementation",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "implementation_hash_",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "name": "remove_implementation",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "implementation_hash_",
+                "type": "felt"
+            },
+            {
+                "name": "eic_hash",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            },
+            {
+                "name": "final",
+                "type": "felt"
+            }
+        ],
+        "name": "upgrade_to",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            }
+        ],
+        "name": "initialize",
+        "outputs": [],
+        "type": "function"
+    }
+]

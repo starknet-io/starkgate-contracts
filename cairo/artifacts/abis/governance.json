@@ -1,0 +1,120 @@
+[
+    {
+        "data": [
+            {
+                "name": "new_governor_nominee",
+                "type": "felt"
+            },
+            {
+                "name": "nominated_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governor_nominated",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "cancelled_nominee",
+                "type": "felt"
+            },
+            {
+                "name": "cancelled_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "nomination_cancelled",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "removed_governor",
+                "type": "felt"
+            },
+            {
+                "name": "removed_by",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governor_removed",
+        "type": "event"
+    },
+    {
+        "data": [
+            {
+                "name": "new_governor",
+                "type": "felt"
+            }
+        ],
+        "keys": [],
+        "name": "governance_accepted",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "name": "account",
+                "type": "felt"
+            }
+        ],
+        "name": "is_governor",
+        "outputs": [
+            {
+                "name": "is_governor_",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "init_governance",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "nominee",
+                "type": "felt"
+            }
+        ],
+        "name": "nominate_new_governor",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "cancelee",
+                "type": "felt"
+            }
+        ],
+        "name": "cancel_nomination",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "removee",
+                "type": "felt"
+            }
+        ],
+        "name": "remove_governor",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "accept_governance",
+        "outputs": [],
+        "type": "function"
+    }
+]

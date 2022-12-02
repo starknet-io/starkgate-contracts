@@ -1,0 +1,94 @@
+[
+    {
+        "inputs": [],
+        "name": "initialized",
+        "outputs": [
+            {
+                "name": "res",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "get_value",
+        "outputs": [
+            {
+                "name": "value",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "get_magic_number",
+        "outputs": [
+            {
+                "name": "value",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "value",
+                "type": "felt"
+            }
+        ],
+        "name": "set_value",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            }
+        ],
+        "name": "initialize",
+        "outputs": [],
+        "type": "function"
+    },
+    {
+        "data": [
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            }
+        ],
+        "keys": [],
+        "name": "external_initialize",
+        "type": "event"
+    },
+    {
+        "inputs": [
+            {
+                "name": "init_vector_len",
+                "type": "felt"
+            },
+            {
+                "name": "init_vector",
+                "type": "felt*"
+            }
+        ],
+        "name": "eic_initialize",
+        "outputs": [],
+        "type": "function"
+    }
+]

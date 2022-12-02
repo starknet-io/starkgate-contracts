@@ -1,0 +1,14 @@
+[
+    {
+        "inputs": [],
+        "name": "permittedMinter",
+        "outputs": [
+            {
+                "name": "minter",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]

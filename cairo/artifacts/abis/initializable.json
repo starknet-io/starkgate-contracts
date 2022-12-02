@@ -1,0 +1,14 @@
+[
+    {
+        "inputs": [],
+        "name": "initialized",
+        "outputs": [
+            {
+                "name": "res",
+                "type": "felt"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+]
