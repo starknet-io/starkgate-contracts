@@ -17,6 +17,9 @@ networks:
         reverting_tx_gas_limit: max
         default_contract_owner: true
         cmd_settings: null
+        cmd_settings:
+          port: 7545
+          chain_id: 5777
     live:
         gas_limit: auto
         gas_buffer: 1.1
