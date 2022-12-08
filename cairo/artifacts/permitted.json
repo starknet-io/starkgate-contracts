@@ -29,6 +29,7 @@
             "pedersen",
             "range_check"
         ],
+        "compiler_version": "0.10.0",
         "data": [
             "0x20780017fff7ffd",
             "0x4",
@@ -146,16 +147,16 @@
         ],
         "debug_info": {
             "file_contents": {
-                "autogen/starknet/arg_processor/1b562308a65653425ce06491fa4b4539466f3251a07e73e099d0afe86a48900e.cairo": "assert [cast(fp + (-4), felt*)] = __calldata_actual_size\n",
-                "autogen/starknet/arg_processor/b496e59b099ab28d9973a77bace61a0a65edee5969d321b4e7e50f0e99ffa318.cairo": "assert [__return_value_ptr] = ret_value.minter\nlet __return_value_ptr = __return_value_ptr + 1\n",
-                "autogen/starknet/external/permittedMinter/424b26e79f70343cc02557f1fbd25745138efb26a3dc5c8b593ca765b73138b7.cairo": "let pedersen_ptr = [cast([cast(fp + (-5), felt**)] + 1, starkware.cairo.common.cairo_builtins.HashBuiltin**)]\n",
-                "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo": "return (syscall_ptr,pedersen_ptr,range_check_ptr,retdata_size,retdata)\n",
-                "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo": "let ret_value = __wrapped_func{syscall_ptr=syscall_ptr, pedersen_ptr=pedersen_ptr, range_check_ptr=range_check_ptr}()\nlet (range_check_ptr, retdata_size, retdata) = permittedMinter_encode_return(ret_value, range_check_ptr)\n",
-                "autogen/starknet/external/permittedMinter/c7060df96cb0acca1380ae43bf758cab727bfdf73cb5d34a93e24a9742817fda.cairo": "let syscall_ptr = [cast([cast(fp + (-5), felt**)] + 0, felt**)]\n",
-                "autogen/starknet/external/permittedMinter/e651458745e7cd218121c342e0915890767e2f59ddc2e315b8844ad0f47d582e.cairo": "let range_check_ptr = [cast([cast(fp + (-5), felt**)] + 2, felt*)]\n",
-                "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo": "func permittedMinter_encode_return(ret_value : (minter : felt), range_check_ptr) -> (\n        range_check_ptr, data_len : felt, data : felt*):\n    %{ memory[ap] = segments.add() %}\n    alloc_locals\n    local __return_value_ptr_start : felt*\n    let __return_value_ptr = __return_value_ptr_start\n    with range_check_ptr:\n    end\n    return (\n        range_check_ptr=range_check_ptr,\n        data_len=__return_value_ptr - __return_value_ptr_start,\n        data=__return_value_ptr_start)\nend\n",
-                "autogen/starknet/storage_var/permitted_minter/decl.cairo": "namespace permitted_minter:\n    from starkware.starknet.common.storage import normalize_address\n    from starkware.starknet.common.syscalls import storage_read, storage_write\n    from starkware.cairo.common.cairo_builtins import HashBuiltin\n    from starkware.cairo.common.hash import hash2\n\n    func addr{pedersen_ptr : HashBuiltin*, range_check_ptr}() -> (res : felt):\n        let res = 0\n        call hash2\n        call normalize_address\n    end\n\n    func read{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}() -> (res : felt):\n        let storage_addr = 0\n        call addr\n        call storage_read\n    end\n\n    func write{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(value : felt):\n        let storage_addr = 0\n        call addr\n        call storage_write\n    end\nend",
-                "autogen/starknet/storage_var/permitted_minter/impl.cairo": "namespace permitted_minter:\n    from starkware.starknet.common.storage import normalize_address\n    from starkware.starknet.common.syscalls import storage_read, storage_write\n    from starkware.cairo.common.cairo_builtins import HashBuiltin\n    from starkware.cairo.common.hash import hash2\n\n    func addr{pedersen_ptr : HashBuiltin*, range_check_ptr}() -> (res : felt):\n        let res = 553060490499374521350519736808313349113904249869887409031913453630132670891\n        return (res=res)\n    end\n\n    func read{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}() -> (res : felt):\n        let (storage_addr) = addr()\n        let (__storage_var_temp0) = storage_read(address=storage_addr + 0)\n\n        tempvar syscall_ptr = syscall_ptr\n        tempvar pedersen_ptr = pedersen_ptr\n        tempvar range_check_ptr = range_check_ptr\n        tempvar __storage_var_temp0 : felt = __storage_var_temp0\n        return ([cast(&__storage_var_temp0, felt*)])\n    end\n\n    func write{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(value : felt):\n        let (storage_addr) = addr()\n        storage_write(address=storage_addr + 0, value=[cast(&value, felt) + 0])\n        return ()\n    end\nend"
+                "autogen/starknet/arg_processor/01cba52f8515996bb9d7070bde81ff39281d096d7024a558efcba6e1fd2402cf.cairo": "assert [cast(fp + (-4), felt*)] = __calldata_actual_size;\n",
+                "autogen/starknet/arg_processor/af85dbda4d89a112f563a2cdb00d65d02ae40b0cf1e123b4c25051189abf2959.cairo": "assert [__return_value_ptr] = ret_value.minter;\nlet __return_value_ptr = __return_value_ptr + 1;\n",
+                "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo": "let ret_value = __wrapped_func{syscall_ptr=syscall_ptr, pedersen_ptr=pedersen_ptr, range_check_ptr=range_check_ptr}();\nlet (range_check_ptr, retdata_size, retdata) = permittedMinter_encode_return(ret_value, range_check_ptr);\n",
+                "autogen/starknet/external/permittedMinter/741ea357d6336b0bed7bf0472425acd0311d543883b803388880e60a232040c7.cairo": "let range_check_ptr = [cast([cast(fp + (-5), felt**)] + 2, felt*)];\n",
+                "autogen/starknet/external/permittedMinter/9684a85e93c782014ca14293edea4eb2502039a5a7b6538ecd39c56faaf12529.cairo": "let pedersen_ptr = [cast([cast(fp + (-5), felt**)] + 1, starkware.cairo.common.cairo_builtins.HashBuiltin**)];\n",
+                "autogen/starknet/external/permittedMinter/b2c52ca2d2a8fc8791a983086d8716c5eacd0c3d62934914d2286f84b98ff4cb.cairo": "let syscall_ptr = [cast([cast(fp + (-5), felt**)] + 0, felt**)];\n",
+                "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo": "return (syscall_ptr,pedersen_ptr,range_check_ptr,retdata_size,retdata);\n",
+                "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo": "func permittedMinter_encode_return(ret_value: (minter: felt), range_check_ptr) -> (\n        range_check_ptr: felt, data_len: felt, data: felt*) {\n    %{ memory[ap] = segments.add() %}\n    alloc_locals;\n    local __return_value_ptr_start: felt*;\n    let __return_value_ptr = __return_value_ptr_start;\n    with range_check_ptr {\n    }\n    return (\n        range_check_ptr=range_check_ptr,\n        data_len=__return_value_ptr - __return_value_ptr_start,\n        data=__return_value_ptr_start);\n}\n",
+                "autogen/starknet/storage_var/permitted_minter/decl.cairo": "namespace permitted_minter {\n    from starkware.starknet.common.storage import normalize_address\n    from starkware.starknet.common.syscalls import storage_read, storage_write\n    from starkware.cairo.common.cairo_builtins import HashBuiltin\n    from starkware.cairo.common.hash import hash2\n\n    func addr{pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (res: felt) {\n        let res = 0;\n        call hash2;\n        call normalize_address;\n    }\n\n    func read{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (res: felt) {\n        let storage_addr = 0;\n        call addr;\n        call storage_read;\n    }\n\n    func write{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(value: felt) {\n        let storage_addr = 0;\n        call addr;\n        call storage_write;\n    }\n}",
+                "autogen/starknet/storage_var/permitted_minter/impl.cairo": "namespace permitted_minter {\n    from starkware.starknet.common.storage import normalize_address\n    from starkware.starknet.common.syscalls import storage_read, storage_write\n    from starkware.cairo.common.cairo_builtins import HashBuiltin\n    from starkware.cairo.common.hash import hash2\n\n    func addr{pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (res: felt) {\n        let res = 553060490499374521350519736808313349113904249869887409031913453630132670891;\n        return (res=res);\n    }\n\n    func read{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}() -> (res: felt) {\n        let (storage_addr) = addr();\n        let (__storage_var_temp0) = storage_read(address=storage_addr + 0);\n\n        tempvar syscall_ptr = syscall_ptr;\n        tempvar pedersen_ptr = pedersen_ptr;\n        tempvar range_check_ptr = range_check_ptr;\n        tempvar __storage_var_temp0: felt = __storage_var_temp0;\n        return ([cast(&__storage_var_temp0, felt*)],);\n    }\n\n    func write{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(value: felt) {\n        let (storage_addr) = addr();\n        storage_write(address=storage_addr + 0, value=[cast(&value, felt) + 0]);\n        return ();\n    }\n}"
             },
             "instruction_locations": {
                 "0": {
@@ -168,24 +169,24 @@
                         {
                             "location": {
                                 "end_col": 7,
-                                "end_line": 9,
+                                "end_line": 11,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/cairo/common/math.cairo"
                                 },
                                 "start_col": 5,
-                                "start_line": 5
+                                "start_line": 7
                             },
                             "n_prefix_newlines": 1
                         }
                     ],
                     "inst": {
                         "end_col": 7,
-                        "end_line": 10,
+                        "end_line": 12,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/cairo/common/math.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 10
+                        "start_line": 12
                     }
                 },
                 "2": {
@@ -197,12 +198,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 18,
-                        "end_line": 12,
+                        "end_line": 14,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/cairo/common/math.cairo"
                         },
                         "start_col": 9,
-                        "start_line": 12
+                        "start_line": 14
                     }
                 },
                 "4": {
@@ -213,13 +214,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 14,
-                        "end_line": 15,
+                        "end_col": 15,
+                        "end_line": 17,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/cairo/common/math.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 15
+                        "start_line": 17
                     }
                 },
                 "5": {
@@ -231,12 +232,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 90,
-                        "end_line": 196,
+                        "end_line": 198,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 63,
-                        "start_line": 196
+                        "start_line": 198
                     }
                 },
                 "7": {
@@ -247,13 +248,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 91,
-                        "end_line": 196,
+                        "end_col": 92,
+                        "end_line": 198,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 196
+                        "start_line": 198
                     }
                 },
                 "8": {
@@ -266,48 +267,48 @@
                         {
                             "location": {
                                 "end_col": 93,
-                                "end_line": 197,
+                                "end_line": 199,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "start_col": 5,
-                                "start_line": 197
+                                "start_line": 199
                             },
                             "n_prefix_newlines": 0
                         }
                     ],
                     "inst": {
                         "end_col": 58,
-                        "end_line": 198,
+                        "end_line": 200,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 44,
-                                "end_line": 194,
+                                "end_col": 43,
+                                "end_line": 196,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 60,
-                                        "end_line": 199,
+                                        "end_col": 61,
+                                        "end_line": 201,
                                         "input_file": {
                                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                         },
                                         "start_col": 5,
-                                        "start_line": 199
+                                        "start_line": 201
                                     },
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 25,
-                                "start_line": 194
+                                "start_line": 196
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
                         "start_col": 23,
-                        "start_line": 198
+                        "start_line": 200
                     }
                 },
                 "10": {
@@ -319,12 +320,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 59,
-                        "end_line": 199,
+                        "end_line": 201,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 28,
-                        "start_line": 199
+                        "start_line": 201
                     }
                 },
                 "11": {
@@ -335,13 +336,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 60,
-                        "end_line": 199,
+                        "end_col": 61,
+                        "end_line": 201,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 199
+                        "start_line": 201
                     }
                 },
                 "12": {
@@ -353,12 +354,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 79,
-                        "end_line": 348,
+                        "end_line": 350,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 58,
-                        "start_line": 348
+                        "start_line": 350
                     }
                 },
                 "14": {
@@ -369,13 +370,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 97,
-                        "end_line": 348,
+                        "end_col": 98,
+                        "end_line": 350,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 348
+                        "start_line": 350
                     }
                 },
                 "15": {
@@ -386,13 +387,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 97,
-                        "end_line": 348,
+                        "end_col": 98,
+                        "end_line": 350,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 348
+                        "start_line": 350
                     }
                 },
                 "16": {
@@ -405,48 +406,48 @@
                         {
                             "location": {
                                 "end_col": 87,
-                                "end_line": 349,
+                                "end_line": 351,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "start_col": 5,
-                                "start_line": 349
+                                "start_line": 351
                             },
                             "n_prefix_newlines": 0
                         }
                     ],
                     "inst": {
                         "end_col": 53,
-                        "end_line": 351,
+                        "end_line": 353,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 38,
-                                "end_line": 346,
+                                "end_col": 37,
+                                "end_line": 348,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 34,
-                                        "end_line": 352,
+                                        "end_col": 35,
+                                        "end_line": 354,
                                         "input_file": {
                                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                         },
                                         "start_col": 5,
-                                        "start_line": 352
+                                        "start_line": 354
                                     },
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 19,
-                                "start_line": 346
+                                "start_line": 348
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
                         "start_col": 23,
-                        "start_line": 351
+                        "start_line": 353
                     }
                 },
                 "18": {
@@ -458,12 +459,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 33,
-                        "end_line": 352,
+                        "end_line": 354,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 19,
-                        "start_line": 352
+                        "start_line": 354
                     }
                 },
                 "19": {
@@ -474,13 +475,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 34,
-                        "end_line": 352,
+                        "end_col": 35,
+                        "end_line": 354,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 352
+                        "start_line": 354
                     }
                 },
                 "20": {
@@ -492,12 +493,12 @@
                     "hints": [],
                     "inst": {
                         "end_col": 40,
-                        "end_line": 366,
+                        "end_line": 368,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 18,
-                        "start_line": 366
+                        "start_line": 368
                     }
                 },
                 "22": {
@@ -508,13 +509,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 71,
-                        "end_line": 366,
+                        "end_col": 72,
+                        "end_line": 368,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 365
+                        "start_line": 367
                     }
                 },
                 "23": {
@@ -525,13 +526,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 71,
-                        "end_line": 366,
+                        "end_col": 72,
+                        "end_line": 368,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 365
+                        "start_line": 367
                     }
                 },
                 "24": {
@@ -542,13 +543,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 71,
-                        "end_line": 366,
+                        "end_col": 72,
+                        "end_line": 368,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 365
+                        "start_line": 367
                     }
                 },
                 "25": {
@@ -561,48 +562,48 @@
                         {
                             "location": {
                                 "end_col": 88,
-                                "end_line": 367,
+                                "end_line": 369,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "start_col": 5,
-                                "start_line": 367
+                                "start_line": 369
                             },
                             "n_prefix_newlines": 0
                         }
                     ],
                     "inst": {
                         "end_col": 54,
-                        "end_line": 368,
+                        "end_line": 370,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 39,
-                                "end_line": 364,
+                                "end_col": 38,
+                                "end_line": 366,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 14,
-                                        "end_line": 369,
+                                        "end_col": 15,
+                                        "end_line": 371,
                                         "input_file": {
                                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                         },
                                         "start_col": 5,
-                                        "start_line": 369
+                                        "start_line": 371
                                     },
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 20,
-                                "start_line": 364
+                                "start_line": 366
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
                         "start_col": 23,
-                        "start_line": 368
+                        "start_line": 370
                     }
                 },
                 "27": {
@@ -613,13 +614,13 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 14,
-                        "end_line": 369,
+                        "end_col": 15,
+                        "end_line": 371,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
                         "start_col": 5,
-                        "start_line": 369
+                        "start_line": 371
                     }
                 },
                 "28": {
@@ -631,21 +632,21 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 42,
+                        "end_col": 41,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 42,
+                                "end_col": 41,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 25,
+                                        "end_col": 26,
                                         "end_line": 9,
                                         "input_file": {
                                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -673,21 +674,21 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 59,
+                        "end_col": 58,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 59,
+                                "end_col": 58,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 25,
+                                        "end_col": 26,
                                         "end_line": 9,
                                         "input_file": {
                                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -697,12 +698,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 44,
+                                "start_col": 43,
                                 "start_line": 7
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 44,
+                        "start_col": 43,
                         "start_line": 7
                     }
                 },
@@ -745,7 +746,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 25,
+                        "end_col": 26,
                         "end_line": 9,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -763,14 +764,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 63,
+                        "end_col": 61,
                         "end_line": 12,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 42,
+                                "end_col": 41,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -792,7 +793,7 @@
                             },
                             "While expanding the reference 'pedersen_ptr' in:"
                         ],
-                        "start_col": 36,
+                        "start_col": 35,
                         "start_line": 12
                     }
                 },
@@ -805,14 +806,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 80,
+                        "end_col": 78,
                         "end_line": 12,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 59,
+                                "end_col": 58,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -829,12 +830,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 44,
+                                "start_col": 43,
                                 "start_line": 7
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 65,
+                        "start_col": 63,
                         "start_line": 12
                     }
                 },
@@ -865,15 +866,15 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 34,
+                        "end_col": 33,
                         "end_line": 12,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 38,
-                                "end_line": 346,
+                                "end_col": 37,
+                                "end_line": 348,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
@@ -890,7 +891,7 @@
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 19,
-                                "start_line": 346
+                                "start_line": 348
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
@@ -955,8 +956,8 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 38,
-                        "end_line": 346,
+                        "end_col": 37,
+                        "end_line": 348,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
@@ -985,7 +986,7 @@
                             "While trying to update the implicit return value 'syscall_ptr' in:"
                         ],
                         "start_col": 19,
-                        "start_line": 346
+                        "start_line": 348
                     }
                 },
                 "42": {
@@ -997,7 +998,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 42,
+                        "end_col": 41,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1039,7 +1040,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 59,
+                        "end_col": 58,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1068,7 +1069,7 @@
                             },
                             "While trying to update the implicit return value 'range_check_ptr' in:"
                         ],
-                        "start_col": 44,
+                        "start_col": 43,
                         "start_line": 7
                     }
                 },
@@ -1088,12 +1089,12 @@
                         },
                         "parent_location": [
                             {
-                                "end_col": 65,
+                                "end_col": 64,
                                 "end_line": 19,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                                 },
-                                "start_col": 46,
+                                "start_col": 45,
                                 "start_line": 19
                             },
                             "While expanding the reference '__storage_var_temp0' in:"
@@ -1111,7 +1112,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 53,
+                        "end_col": 55,
                         "end_line": 20,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -1129,14 +1130,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 64,
+                        "end_col": 62,
                         "end_line": 23,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 42,
+                                "end_col": 41,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1158,7 +1159,7 @@
                             },
                             "While expanding the reference 'pedersen_ptr' in:"
                         ],
-                        "start_col": 37,
+                        "start_col": 36,
                         "start_line": 23
                     }
                 },
@@ -1171,14 +1172,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 81,
+                        "end_col": 79,
                         "end_line": 23,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 59,
+                                "end_col": 58,
                                 "end_line": 7,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1195,12 +1196,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 44,
+                                "start_col": 43,
                                 "start_line": 7
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 66,
+                        "start_col": 64,
                         "start_line": 23
                     }
                 },
@@ -1231,15 +1232,15 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 35,
+                        "end_col": 34,
                         "end_line": 23,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 39,
-                                "end_line": 364,
+                                "end_col": 38,
+                                "end_line": 366,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
@@ -1256,7 +1257,7 @@
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 20,
-                                "start_line": 364
+                                "start_line": 366
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
@@ -1339,7 +1340,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 42,
+                        "end_col": 41,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1353,14 +1354,14 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 64,
+                                        "end_col": 62,
                                         "end_line": 19,
                                         "input_file": {
                                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
                                         },
                                         "parent_location": [
                                             {
-                                                "end_col": 18,
+                                                "end_col": 19,
                                                 "end_line": 26,
                                                 "input_file": {
                                                     "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -1370,7 +1371,7 @@
                                             },
                                             "While trying to retrieve the implicit argument 'pedersen_ptr' in:"
                                         ],
-                                        "start_col": 37,
+                                        "start_col": 36,
                                         "start_line": 19
                                     },
                                     "While expanding the reference 'pedersen_ptr' in:"
@@ -1393,7 +1394,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 59,
+                        "end_col": 58,
                         "end_line": 7,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1407,14 +1408,14 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 81,
+                                        "end_col": 79,
                                         "end_line": 19,
                                         "input_file": {
                                             "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
                                         },
                                         "parent_location": [
                                             {
-                                                "end_col": 18,
+                                                "end_col": 19,
                                                 "end_line": 26,
                                                 "input_file": {
                                                     "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -1424,7 +1425,7 @@
                                             },
                                             "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                         ],
-                                        "start_col": 66,
+                                        "start_col": 64,
                                         "start_line": 19
                                     },
                                     "While expanding the reference 'range_check_ptr' in:"
@@ -1434,7 +1435,7 @@
                             },
                             "While trying to update the implicit return value 'range_check_ptr' in:"
                         ],
-                        "start_col": 44,
+                        "start_col": 43,
                         "start_line": 7
                     }
                 },
@@ -1447,7 +1448,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 18,
+                        "end_col": 19,
                         "end_line": 26,
                         "input_file": {
                             "filename": "autogen/starknet/storage_var/permitted_minter/impl.cairo"
@@ -1464,7 +1465,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 26,
+                        "end_col": 25,
                         "end_line": 14,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -1510,14 +1511,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 47,
+                        "end_col": 46,
                         "end_line": 13,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 35,
+                                "end_col": 34,
                                 "end_line": 19,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1551,14 +1552,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 76,
+                        "end_col": 74,
                         "end_line": 13,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 64,
+                                "end_col": 62,
                                 "end_line": 19,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1575,12 +1576,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'pedersen_ptr' in:"
                                 ],
-                                "start_col": 37,
+                                "start_col": 36,
                                 "start_line": 19
                             },
                             "While expanding the reference 'pedersen_ptr' in:"
                         ],
-                        "start_col": 49,
+                        "start_col": 48,
                         "start_line": 13
                     }
                 },
@@ -1592,14 +1593,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 93,
+                        "end_col": 91,
                         "end_line": 13,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 81,
+                                "end_col": 79,
                                 "end_line": 19,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1616,12 +1617,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 66,
+                                "start_col": 64,
                                 "start_line": 19
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 78,
+                        "start_col": 76,
                         "start_line": 13
                     }
                 },
@@ -1633,7 +1634,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 26,
+                        "end_col": 25,
                         "end_line": 14,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -1679,7 +1680,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 14,
+                        "end_col": 15,
                         "end_line": 18,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -1697,14 +1698,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 41,
+                        "end_col": 40,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 34,
+                                "end_col": 33,
                                 "end_line": 13,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1739,14 +1740,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 70,
+                        "end_col": 68,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 63,
+                                "end_col": 61,
                                 "end_line": 13,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1763,12 +1764,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'pedersen_ptr' in:"
                                 ],
-                                "start_col": 36,
+                                "start_col": 35,
                                 "start_line": 13
                             },
                             "While expanding the reference 'pedersen_ptr' in:"
                         ],
-                        "start_col": 43,
+                        "start_col": 42,
                         "start_line": 24
                     }
                 },
@@ -1781,14 +1782,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 87,
+                        "end_col": 85,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 80,
+                                "end_col": 78,
                                 "end_line": 13,
                                 "input_file": {
                                     "filename": "autogen/starknet/storage_var/permitted_minter/decl.cairo"
@@ -1805,12 +1806,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 65,
+                                "start_col": 63,
                                 "start_line": 13
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 72,
+                        "start_col": 70,
                         "start_line": 24
                     }
                 },
@@ -1841,7 +1842,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 20,
+                        "end_col": 22,
                         "end_line": 28,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -1864,7 +1865,7 @@
                                 "end_col": 38,
                                 "end_line": 3,
                                 "input_file": {
-                                    "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                                    "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                                 },
                                 "parent_location": [
                                     {
@@ -1885,10 +1886,10 @@
                         }
                     ],
                     "inst": {
-                        "end_col": 17,
+                        "end_col": 18,
                         "end_line": 4,
                         "input_file": {
-                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                         },
                         "parent_location": [
                             {
@@ -1916,14 +1917,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 47,
+                        "end_col": 48,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/arg_processor/b496e59b099ab28d9973a77bace61a0a65edee5969d321b4e7e50f0e99ffa318.cairo"
+                            "filename": "autogen/starknet/arg_processor/af85dbda4d89a112f563a2cdb00d65d02ae40b0cf1e123b4c25051189abf2959.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 18,
+                                "end_col": 17,
                                 "end_line": 25,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -1950,11 +1951,11 @@
                         "end_col": 48,
                         "end_line": 2,
                         "input_file": {
-                            "filename": "autogen/starknet/arg_processor/b496e59b099ab28d9973a77bace61a0a65edee5969d321b4e7e50f0e99ffa318.cairo"
+                            "filename": "autogen/starknet/arg_processor/af85dbda4d89a112f563a2cdb00d65d02ae40b0cf1e123b4c25051189abf2959.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 18,
+                                "end_col": 17,
                                 "end_line": 25,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -1964,7 +1965,7 @@
                                         "end_col": 36,
                                         "end_line": 11,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2002,10 +2003,10 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 80,
+                        "end_col": 78,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                         },
                         "parent_location": [
                             {
@@ -2019,7 +2020,7 @@
                                         "end_col": 40,
                                         "end_line": 10,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2043,7 +2044,7 @@
                             },
                             "While handling return value of"
                         ],
-                        "start_col": 65,
+                        "start_col": 63,
                         "start_line": 1
                     }
                 },
@@ -2060,7 +2061,7 @@
                         "end_col": 63,
                         "end_line": 11,
                         "input_file": {
-                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                         },
                         "parent_location": [
                             {
@@ -2091,7 +2092,7 @@
                         "end_col": 35,
                         "end_line": 5,
                         "input_file": {
-                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                         },
                         "parent_location": [
                             {
@@ -2105,7 +2106,7 @@
                                         "end_col": 38,
                                         "end_line": 12,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2143,10 +2144,10 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 39,
+                        "end_col": 40,
                         "end_line": 12,
                         "input_file": {
-                            "filename": "autogen/starknet/external/return/permittedMinter/3823637f5887ec6472e4665f41921f053a55ff388d5371c90e047ca8ceeb46c9.cairo"
+                            "filename": "autogen/starknet/external/return/permittedMinter/328b9ae044657eae29f4ec34acf11359563342d9f5d202eaddfd2a2cf37322bf.cairo"
                         },
                         "parent_location": [
                             {
@@ -2174,10 +2175,10 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 57,
+                        "end_col": 58,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/arg_processor/1b562308a65653425ce06491fa4b4539466f3251a07e73e099d0afe86a48900e.cairo"
+                            "filename": "autogen/starknet/arg_processor/01cba52f8515996bb9d7070bde81ff39281d096d7024a558efcba6e1fd2402cf.cairo"
                         },
                         "parent_location": [
                             {
@@ -2208,11 +2209,11 @@
                         "end_col": 64,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/c7060df96cb0acca1380ae43bf758cab727bfdf73cb5d34a93e24a9742817fda.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/b2c52ca2d2a8fc8791a983086d8716c5eacd0c3d62934914d2286f84b98ff4cb.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 41,
+                                "end_col": 40,
                                 "end_line": 24,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -2222,7 +2223,7 @@
                                         "end_col": 55,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2263,11 +2264,11 @@
                         "end_col": 110,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/424b26e79f70343cc02557f1fbd25745138efb26a3dc5c8b593ca765b73138b7.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/9684a85e93c782014ca14293edea4eb2502039a5a7b6538ecd39c56faaf12529.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 70,
+                                "end_col": 68,
                                 "end_line": 24,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -2277,7 +2278,7 @@
                                         "end_col": 82,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2296,7 +2297,7 @@
                                     },
                                     "While expanding the reference 'pedersen_ptr' in:"
                                 ],
-                                "start_col": 43,
+                                "start_col": 42,
                                 "start_line": 24
                             },
                             "While constructing the external wrapper for:"
@@ -2318,11 +2319,11 @@
                         "end_col": 67,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/e651458745e7cd218121c342e0915890767e2f59ddc2e315b8844ad0f47d582e.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/741ea357d6336b0bed7bf0472425acd0311d543883b803388880e60a232040c7.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 87,
+                                "end_col": 85,
                                 "end_line": 24,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -2332,7 +2333,7 @@
                                         "end_col": 115,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2351,7 +2352,7 @@
                                     },
                                     "While expanding the reference 'range_check_ptr' in:"
                                 ],
-                                "start_col": 72,
+                                "start_col": 70,
                                 "start_line": 24
                             },
                             "While constructing the external wrapper for:"
@@ -2392,7 +2393,7 @@
                         "end_col": 115,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2406,7 +2407,7 @@
                                         "end_col": 104,
                                         "end_line": 2,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2447,7 +2448,7 @@
                         "end_col": 105,
                         "end_line": 2,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2478,7 +2479,7 @@
                         "end_col": 55,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2492,7 +2493,7 @@
                                         "end_col": 20,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2533,7 +2534,7 @@
                         "end_col": 82,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2547,7 +2548,7 @@
                                         "end_col": 33,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2588,7 +2589,7 @@
                         "end_col": 21,
                         "end_line": 2,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2602,7 +2603,7 @@
                                         "end_col": 49,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2643,7 +2644,7 @@
                         "end_col": 35,
                         "end_line": 2,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2657,7 +2658,7 @@
                                         "end_col": 62,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2698,7 +2699,7 @@
                         "end_col": 44,
                         "end_line": 2,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/720e4e16ba80d2500694da7d196a8858b42f599e6ce7b78ea5aa47eb05f5f42d.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/6e126a32753affa2c1a4949e90bc4e056792c9daec16f65049e954dc2daff405.cairo"
                         },
                         "parent_location": [
                             {
@@ -2712,7 +2713,7 @@
                                         "end_col": 70,
                                         "end_line": 1,
                                         "input_file": {
-                                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                                         },
                                         "parent_location": [
                                             {
@@ -2750,10 +2751,10 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 71,
+                        "end_col": 72,
                         "end_line": 1,
                         "input_file": {
-                            "filename": "autogen/starknet/external/permittedMinter/4ba2b119ceb30fe10f4cca3c9d73ef620c0fb5eece91b99a99d71217bba1001c.cairo"
+                            "filename": "autogen/starknet/external/permittedMinter/da17921a4e81c09e730800bbf23bfdbe5e9e6bfaedc59d80fbf62087fa43c27d.cairo"
                         },
                         "parent_location": [
                             {
@@ -2779,15 +2780,15 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 47,
+                        "end_col": 46,
                         "end_line": 33,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 44,
-                                "end_line": 194,
+                                "end_col": 43,
+                                "end_line": 196,
                                 "input_file": {
                                     "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                                 },
@@ -2804,7 +2805,7 @@
                                     "While trying to retrieve the implicit argument 'syscall_ptr' in:"
                                 ],
                                 "start_col": 25,
-                                "start_line": 194
+                                "start_line": 196
                             },
                             "While expanding the reference 'syscall_ptr' in:"
                         ],
@@ -2837,8 +2838,8 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 44,
-                        "end_line": 194,
+                        "end_col": 43,
+                        "end_line": 196,
                         "input_file": {
                             "filename": "/Users/gl/ws/starkgate-contracts/cairo/dev/lib/python3.9/site-packages/starkware/starknet/common/syscalls.cairo"
                         },
@@ -2851,7 +2852,7 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 41,
+                                        "end_col": 40,
                                         "end_line": 24,
                                         "input_file": {
                                             "filename": "contracts/ERC20/permitted.cairo"
@@ -2879,7 +2880,7 @@
                             "While trying to update the implicit return value 'syscall_ptr' in:"
                         ],
                         "start_col": 25,
-                        "start_line": 194
+                        "start_line": 196
                     }
                 },
                 "102": {
@@ -2890,14 +2891,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 76,
+                        "end_col": 74,
                         "end_line": 33,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 70,
+                                "end_col": 68,
                                 "end_line": 24,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -2914,12 +2915,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'pedersen_ptr' in:"
                                 ],
-                                "start_col": 43,
+                                "start_col": 42,
                                 "start_line": 24
                             },
                             "While expanding the reference 'pedersen_ptr' in:"
                         ],
-                        "start_col": 49,
+                        "start_col": 48,
                         "start_line": 33
                     }
                 },
@@ -2931,14 +2932,14 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 93,
+                        "end_col": 91,
                         "end_line": 33,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
                         },
                         "parent_location": [
                             {
-                                "end_col": 87,
+                                "end_col": 85,
                                 "end_line": 24,
                                 "input_file": {
                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -2955,12 +2956,12 @@
                                     },
                                     "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                 ],
-                                "start_col": 72,
+                                "start_col": 70,
                                 "start_line": 24
                             },
                             "While expanding the reference 'range_check_ptr' in:"
                         ],
-                        "start_col": 78,
+                        "start_col": 76,
                         "start_line": 33
                     }
                 },
@@ -3006,7 +3007,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 46,
+                        "end_col": 47,
                         "end_line": 37,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -3023,7 +3024,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 41,
+                        "end_col": 40,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -3037,14 +3038,14 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 47,
+                                        "end_col": 46,
                                         "end_line": 33,
                                         "input_file": {
                                             "filename": "contracts/ERC20/permitted.cairo"
                                         },
                                         "parent_location": [
                                             {
-                                                "end_col": 14,
+                                                "end_col": 15,
                                                 "end_line": 38,
                                                 "input_file": {
                                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -3076,7 +3077,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 70,
+                        "end_col": 68,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -3090,14 +3091,14 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 76,
+                                        "end_col": 74,
                                         "end_line": 33,
                                         "input_file": {
                                             "filename": "contracts/ERC20/permitted.cairo"
                                         },
                                         "parent_location": [
                                             {
-                                                "end_col": 14,
+                                                "end_col": 15,
                                                 "end_line": 38,
                                                 "input_file": {
                                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -3107,7 +3108,7 @@
                                             },
                                             "While trying to retrieve the implicit argument 'pedersen_ptr' in:"
                                         ],
-                                        "start_col": 49,
+                                        "start_col": 48,
                                         "start_line": 33
                                     },
                                     "While expanding the reference 'pedersen_ptr' in:"
@@ -3117,7 +3118,7 @@
                             },
                             "While trying to update the implicit return value 'pedersen_ptr' in:"
                         ],
-                        "start_col": 43,
+                        "start_col": 42,
                         "start_line": 24
                     }
                 },
@@ -3129,7 +3130,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 87,
+                        "end_col": 85,
                         "end_line": 24,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -3143,14 +3144,14 @@
                                 },
                                 "parent_location": [
                                     {
-                                        "end_col": 93,
+                                        "end_col": 91,
                                         "end_line": 33,
                                         "input_file": {
                                             "filename": "contracts/ERC20/permitted.cairo"
                                         },
                                         "parent_location": [
                                             {
-                                                "end_col": 14,
+                                                "end_col": 15,
                                                 "end_line": 38,
                                                 "input_file": {
                                                     "filename": "contracts/ERC20/permitted.cairo"
@@ -3160,7 +3161,7 @@
                                             },
                                             "While trying to retrieve the implicit argument 'range_check_ptr' in:"
                                         ],
-                                        "start_col": 78,
+                                        "start_col": 76,
                                         "start_line": 33
                                     },
                                     "While expanding the reference 'range_check_ptr' in:"
@@ -3170,7 +3171,7 @@
                             },
                             "While trying to update the implicit return value 'range_check_ptr' in:"
                         ],
-                        "start_col": 72,
+                        "start_col": 70,
                         "start_line": 24
                     }
                 },
@@ -3182,7 +3183,7 @@
                     "flow_tracking_data": null,
                     "hints": [],
                     "inst": {
-                        "end_col": 14,
+                        "end_col": 15,
                         "end_line": 38,
                         "input_file": {
                             "filename": "contracts/ERC20/permitted.cairo"
@@ -3331,7 +3332,7 @@
                 "type": "struct"
             },
             "__main__.permittedMinter.Return": {
-                "cairo_type": "(minter : felt)",
+                "cairo_type": "(minter: felt)",
                 "type": "type_definition"
             },
             "__main__.permittedMinter.SIZEOF_LOCALS": {
@@ -3435,7 +3436,7 @@
                 "type": "struct"
             },
             "__main__.permitted_minter.addr.Return": {
-                "cairo_type": "(res : felt)",
+                "cairo_type": "(res: felt)",
                 "type": "type_definition"
             },
             "__main__.permitted_minter.addr.SIZEOF_LOCALS": {
@@ -3481,7 +3482,7 @@
                 "type": "struct"
             },
             "__main__.permitted_minter.read.Return": {
-                "cairo_type": "(res : felt)",
+                "cairo_type": "(res: felt)",
                 "type": "type_definition"
             },
             "__main__.permitted_minter.read.SIZEOF_LOCALS": {
@@ -3597,7 +3598,7 @@
                 "type": "struct"
             },
             "__wrappers__.permittedMinter.Return": {
-                "cairo_type": "(syscall_ptr : felt*, pedersen_ptr : starkware.cairo.common.cairo_builtins.HashBuiltin*, range_check_ptr : felt, size : felt, retdata : felt*)",
+                "cairo_type": "(syscall_ptr: felt*, pedersen_ptr: starkware.cairo.common.cairo_builtins.HashBuiltin*, range_check_ptr: felt, size: felt, retdata: felt*)",
                 "type": "type_definition"
             },
             "__wrappers__.permittedMinter.SIZEOF_LOCALS": {
@@ -3621,7 +3622,7 @@
                         "offset": 1
                     },
                     "ret_value": {
-                        "cairo_type": "(minter : felt)",
+                        "cairo_type": "(minter: felt)",
                         "offset": 0
                     }
                 },
@@ -3635,7 +3636,7 @@
                 "type": "struct"
             },
             "__wrappers__.permittedMinter_encode_return.Return": {
-                "cairo_type": "(range_check_ptr : felt, data_len : felt, data : felt*)",
+                "cairo_type": "(range_check_ptr: felt, data_len: felt, data: felt*)",
                 "type": "type_definition"
             },
             "__wrappers__.permittedMinter_encode_return.SIZEOF_LOCALS": {
@@ -3645,6 +3646,14 @@
             "__wrappers__.permittedMinter_encode_return.memcpy": {
                 "destination": "starkware.cairo.common.memcpy.memcpy",
                 "type": "alias"
+            },
+            "starkware.cairo.common.bool.FALSE": {
+                "type": "const",
+                "value": 0
+            },
+            "starkware.cairo.common.bool.TRUE": {
+                "type": "const",
+                "value": 1
             },
             "starkware.cairo.common.cairo_builtins.BitwiseBuiltin": {
                 "full_name": "starkware.cairo.common.cairo_builtins.BitwiseBuiltin",
@@ -3719,6 +3728,25 @@
                 "size": 3,
                 "type": "struct"
             },
+            "starkware.cairo.common.cairo_builtins.KeccakBuiltin": {
+                "full_name": "starkware.cairo.common.cairo_builtins.KeccakBuiltin",
+                "members": {
+                    "input": {
+                        "cairo_type": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                        "offset": 0
+                    },
+                    "output": {
+                        "cairo_type": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                        "offset": 8
+                    }
+                },
+                "size": 16,
+                "type": "struct"
+            },
+            "starkware.cairo.common.cairo_builtins.KeccakBuiltinState": {
+                "destination": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                "type": "alias"
+            },
             "starkware.cairo.common.cairo_builtins.SignatureBuiltin": {
                 "full_name": "starkware.cairo.common.cairo_builtins.SignatureBuiltin",
                 "members": {
@@ -3770,6 +3798,53 @@
             },
             "starkware.cairo.common.hash.HashBuiltin": {
                 "destination": "starkware.cairo.common.cairo_builtins.HashBuiltin",
+                "type": "alias"
+            },
+            "starkware.cairo.common.keccak_state.KeccakBuiltinState": {
+                "full_name": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                "members": {
+                    "s0": {
+                        "cairo_type": "felt",
+                        "offset": 0
+                    },
+                    "s1": {
+                        "cairo_type": "felt",
+                        "offset": 1
+                    },
+                    "s2": {
+                        "cairo_type": "felt",
+                        "offset": 2
+                    },
+                    "s3": {
+                        "cairo_type": "felt",
+                        "offset": 3
+                    },
+                    "s4": {
+                        "cairo_type": "felt",
+                        "offset": 4
+                    },
+                    "s5": {
+                        "cairo_type": "felt",
+                        "offset": 5
+                    },
+                    "s6": {
+                        "cairo_type": "felt",
+                        "offset": 6
+                    },
+                    "s7": {
+                        "cairo_type": "felt",
+                        "offset": 7
+                    }
+                },
+                "size": 8,
+                "type": "struct"
+            },
+            "starkware.cairo.common.math.FALSE": {
+                "destination": "starkware.cairo.common.bool.FALSE",
+                "type": "alias"
+            },
+            "starkware.cairo.common.math.TRUE": {
+                "destination": "starkware.cairo.common.bool.TRUE",
                 "type": "alias"
             },
             "starkware.cairo.common.math.assert_not_zero": {
@@ -3936,7 +4011,7 @@
                         "cairo_type": "felt",
                         "offset": 2
                     },
-                    "reserved": {
+                    "deploy_from_zero": {
                         "cairo_type": "felt",
                         "offset": 5
                     },
@@ -4453,6 +4528,10 @@
                         "cairo_type": "felt",
                         "offset": 2
                     },
+                    "nonce": {
+                        "cairo_type": "felt",
+                        "offset": 7
+                    },
                     "signature": {
                         "cairo_type": "felt*",
                         "offset": 4
@@ -4470,7 +4549,7 @@
                         "offset": 0
                     }
                 },
-                "size": 7,
+                "size": 8,
                 "type": "struct"
             },
             "starkware.starknet.common.syscalls.get_caller_address": {
@@ -4496,7 +4575,7 @@
                 "type": "struct"
             },
             "starkware.starknet.common.syscalls.get_caller_address.Return": {
-                "cairo_type": "(caller_address : felt)",
+                "cairo_type": "(caller_address: felt)",
                 "type": "type_definition"
             },
             "starkware.starknet.common.syscalls.get_caller_address.SIZEOF_LOCALS": {
@@ -4554,7 +4633,7 @@
                 "type": "struct"
             },
             "starkware.starknet.common.syscalls.storage_read.Return": {
-                "cairo_type": "(value : felt)",
+                "cairo_type": "(value: felt)",
                 "type": "type_definition"
             },
             "starkware.starknet.common.syscalls.storage_read.SIZEOF_LOCALS": {

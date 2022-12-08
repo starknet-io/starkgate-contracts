@@ -252,39 +252,6 @@
                 "type": "felt"
             }
         ],
-        "name": "implementation_time",
-        "outputs": [
-            {
-                "name": "time",
-                "type": "felt"
-            }
-        ],
-        "stateMutability": "view",
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "name": "implementation_hash_",
-                "type": "felt"
-            },
-            {
-                "name": "eic_hash",
-                "type": "felt"
-            },
-            {
-                "name": "init_vector_len",
-                "type": "felt"
-            },
-            {
-                "name": "init_vector",
-                "type": "felt*"
-            },
-            {
-                "name": "final",
-                "type": "felt"
-            }
-        ],
         "name": "add_implementation",
         "outputs": [],
         "type": "function"
@@ -340,21 +307,6 @@
             }
         ],
         "name": "upgrade_to",
-        "outputs": [],
-        "type": "function"
-    },
-    {
-        "inputs": [
-            {
-                "name": "init_vector_len",
-                "type": "felt"
-            },
-            {
-                "name": "init_vector",
-                "type": "felt*"
-            }
-        ],
-        "name": "initialize",
         "outputs": [],
         "type": "function"
     },

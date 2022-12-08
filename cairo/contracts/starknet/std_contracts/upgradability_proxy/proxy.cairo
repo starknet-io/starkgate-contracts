@@ -21,42 +21,42 @@ from starknet.std_contracts.upgradability_proxy.proxy_impl import (
 )
 
 @constructor
-func constructor{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    upgrade_delay_seconds : felt
-):
-    upgrade_delay.write(value=upgrade_delay_seconds)
-    return ()
-end
+func constructor{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    upgrade_delay_seconds: felt
+) {
+    upgrade_delay.write(value=upgrade_delay_seconds);
+    return ();
+}
 
 @external
 @raw_input
 @raw_output
-func __default__{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    selector : felt, calldata_size : felt, calldata : felt*
-) -> (retdata_size : felt, retdata : felt*):
-    let (class_hash_) = implementation()
+func __default__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    selector: felt, calldata_size: felt, calldata: felt*
+) -> (retdata_size: felt, retdata: felt*) {
+    let (class_hash_) = implementation();
 
-    let (retdata_size : felt, retdata : felt*) = library_call(
+    let (retdata_size: felt, retdata: felt*) = library_call(
         class_hash=class_hash_,
         function_selector=selector,
         calldata_size=calldata_size,
         calldata=calldata,
-    )
-    return (retdata_size=retdata_size, retdata=retdata)
-end
+    );
+    return (retdata_size=retdata_size, retdata=retdata);
+}
 
 @l1_handler
 @raw_input
-func __l1_default__{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    selector : felt, calldata_size : felt, calldata : felt*
-):
-    let (class_hash_) = implementation()
+func __l1_default__{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    selector: felt, calldata_size: felt, calldata: felt*
+) {
+    let (class_hash_) = implementation();
 
     library_call_l1_handler(
         class_hash=class_hash_,
         function_selector=selector,
         calldata_size=calldata_size,
         calldata=calldata,
-    )
-    return ()
-end
+    );
+    return ();
+}

@@ -10,6 +10,7 @@
         "builtins": [
             "range_check"
         ],
+        "compiler_version": "0.10.0",
         "data": [],
         "debug_info": {
             "file_contents": {},
@@ -100,6 +101,14 @@
                 "destination": "starkware.cairo.common.cairo_builtins.BitwiseBuiltin",
                 "type": "alias"
             },
+            "starkware.cairo.common.bool.FALSE": {
+                "type": "const",
+                "value": 0
+            },
+            "starkware.cairo.common.bool.TRUE": {
+                "type": "const",
+                "value": 1
+            },
             "starkware.cairo.common.cairo_builtins.BitwiseBuiltin": {
                 "full_name": "starkware.cairo.common.cairo_builtins.BitwiseBuiltin",
                 "members": {
@@ -173,6 +182,25 @@
                 "size": 3,
                 "type": "struct"
             },
+            "starkware.cairo.common.cairo_builtins.KeccakBuiltin": {
+                "full_name": "starkware.cairo.common.cairo_builtins.KeccakBuiltin",
+                "members": {
+                    "input": {
+                        "cairo_type": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                        "offset": 0
+                    },
+                    "output": {
+                        "cairo_type": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                        "offset": 8
+                    }
+                },
+                "size": 16,
+                "type": "struct"
+            },
+            "starkware.cairo.common.cairo_builtins.KeccakBuiltinState": {
+                "destination": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                "type": "alias"
+            },
             "starkware.cairo.common.cairo_builtins.SignatureBuiltin": {
                 "full_name": "starkware.cairo.common.cairo_builtins.SignatureBuiltin",
                 "members": {
@@ -224,6 +252,53 @@
             },
             "starkware.cairo.common.hash.HashBuiltin": {
                 "destination": "starkware.cairo.common.cairo_builtins.HashBuiltin",
+                "type": "alias"
+            },
+            "starkware.cairo.common.keccak_state.KeccakBuiltinState": {
+                "full_name": "starkware.cairo.common.keccak_state.KeccakBuiltinState",
+                "members": {
+                    "s0": {
+                        "cairo_type": "felt",
+                        "offset": 0
+                    },
+                    "s1": {
+                        "cairo_type": "felt",
+                        "offset": 1
+                    },
+                    "s2": {
+                        "cairo_type": "felt",
+                        "offset": 2
+                    },
+                    "s3": {
+                        "cairo_type": "felt",
+                        "offset": 3
+                    },
+                    "s4": {
+                        "cairo_type": "felt",
+                        "offset": 4
+                    },
+                    "s5": {
+                        "cairo_type": "felt",
+                        "offset": 5
+                    },
+                    "s6": {
+                        "cairo_type": "felt",
+                        "offset": 6
+                    },
+                    "s7": {
+                        "cairo_type": "felt",
+                        "offset": 7
+                    }
+                },
+                "size": 8,
+                "type": "struct"
+            },
+            "starkware.cairo.common.math.FALSE": {
+                "destination": "starkware.cairo.common.bool.FALSE",
+                "type": "alias"
+            },
+            "starkware.cairo.common.math.TRUE": {
+                "destination": "starkware.cairo.common.bool.TRUE",
                 "type": "alias"
             },
             "starkware.cairo.common.math_cmp.RC_BOUND": {
@@ -452,7 +527,7 @@
                         "cairo_type": "felt",
                         "offset": 2
                     },
-                    "reserved": {
+                    "deploy_from_zero": {
                         "cairo_type": "felt",
                         "offset": 5
                     },
@@ -969,6 +1044,10 @@
                         "cairo_type": "felt",
                         "offset": 2
                     },
+                    "nonce": {
+                        "cairo_type": "felt",
+                        "offset": 7
+                    },
                     "signature": {
                         "cairo_type": "felt*",
                         "offset": 4
@@ -986,7 +1065,7 @@
                         "offset": 0
                     }
                 },
-                "size": 7,
+                "size": 8,
                 "type": "struct"
             }
         },

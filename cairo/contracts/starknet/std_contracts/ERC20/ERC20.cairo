@@ -37,148 +37,148 @@ from starknet.std_contracts.upgradability_proxy.initializable import (
     set_initialized,
 )
 
-const CONTRACT_IDENTITY = 'ERC20'
-const CONTRACT_VERSION = 1
+const CONTRACT_IDENTITY = 'ERC20';
+const CONTRACT_VERSION = 1;
 
 @view
-func get_version() -> (version : felt):
-    return (version=CONTRACT_VERSION)
-end
+func get_version() -> (version: felt) {
+    return (version=CONTRACT_VERSION);
+}
 
 @view
-func get_identity() -> (identity : felt):
-    return (identity=CONTRACT_IDENTITY)
-end
+func get_identity() -> (identity: felt) {
+    return (identity=CONTRACT_IDENTITY);
+}
 
-# Constructor (as initializer).
-
-@external
-func initialize{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    init_vector_len : felt, init_vector : felt*
-):
-    set_initialized()
-    # We expect the init vector to be [name , symbol , decimals , minter_address].
-    with_attr error_message("ILLEGAL_INIT_SIZE"):
-        assert init_vector_len = 4
-    end
-
-    let name = [init_vector]
-    let symbol = [init_vector + 1]
-    let decimals = [init_vector + 2]
-    ERC20_initializer(name, symbol, decimals)
-
-    let minter_address = [init_vector + 3]
-    permitted_initializer(minter_address)
-    return ()
-end
-
-# Externals.
+// Constructor (as initializer).
 
 @external
-func transfer{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    recipient : felt, amount : Uint256
-) -> (success : felt):
-    let (sender) = get_caller_address()
-    ERC20_transfer(sender, recipient, amount)
+func initialize{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    init_vector_len: felt, init_vector: felt*
+) {
+    set_initialized();
+    // We expect the init vector to be [name , symbol , decimals , minter_address].
+    with_attr error_message("ILLEGAL_INIT_SIZE") {
+        assert init_vector_len = 4;
+    }
 
-    # Cairo equivalent to 'return (true)'
-    return (1)
-end
+    let name = [init_vector];
+    let symbol = [init_vector + 1];
+    let decimals = [init_vector + 2];
+    ERC20_initializer(name, symbol, decimals);
 
-@external
-func transferFrom{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    sender : felt, recipient : felt, amount : Uint256
-) -> (success : felt):
-    alloc_locals
-    let (local caller) = get_caller_address()
-    let (local caller_allowance : Uint256) = ERC20_allowances.read(owner=sender, spender=caller)
+    let minter_address = [init_vector + 3];
+    permitted_initializer(minter_address);
+    return ();
+}
 
-    # Validates amount <= caller_allowance and returns 1 if true.
-    let (enough_allowance) = uint256_le(amount, caller_allowance)
-    assert_not_zero(enough_allowance)
-
-    ERC20_transfer(sender, recipient, amount)
-
-    # Subtract allowance.
-    let (new_allowance : Uint256) = uint256_sub(caller_allowance, amount)
-    ERC20_allowances.write(sender, caller, new_allowance)
-
-    # Cairo equivalent to 'return (true)'
-    return (1)
-end
+// Externals.
 
 @external
-func approve{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    spender : felt, amount : Uint256
-) -> (success : felt):
-    let (caller) = get_caller_address()
-    ERC20_approve(caller, spender, amount)
+func transfer{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    recipient: felt, amount: Uint256
+) -> (success: felt) {
+    let (sender) = get_caller_address();
+    ERC20_transfer(sender, recipient, amount);
 
-    # Cairo equivalent to 'return (true)'
-    return (1)
-end
-
-@external
-func increaseAllowance{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    spender : felt, added_value : Uint256
-) -> (success : felt):
-    alloc_locals
-    uint256_check(added_value)
-    let (local caller) = get_caller_address()
-    let (local current_allowance : Uint256) = ERC20_allowances.read(caller, spender)
-
-    # Add allowance.
-    let (local new_allowance : Uint256, is_overflow) = uint256_add(current_allowance, added_value)
-    assert (is_overflow) = 0
-
-    ERC20_approve(caller, spender, new_allowance)
-
-    # Cairo equivalent to 'return (true)'
-    return (1)
-end
+    // Cairo equivalent to 'return (true)'
+    return (1,);
+}
 
 @external
-func decreaseAllowance{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    spender : felt, subtracted_value : Uint256
-) -> (success : felt):
-    alloc_locals
-    uint256_check(subtracted_value)
-    let (local caller) = get_caller_address()
-    let (local current_allowance : Uint256) = ERC20_allowances.read(owner=caller, spender=spender)
-    let (local new_allowance : Uint256) = uint256_sub(current_allowance, subtracted_value)
+func transferFrom{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    sender: felt, recipient: felt, amount: Uint256
+) -> (success: felt) {
+    alloc_locals;
+    let (local caller) = get_caller_address();
+    let (local caller_allowance: Uint256) = ERC20_allowances.read(owner=sender, spender=caller);
 
-    # Validates new_allowance < current_allowance and returns 1 if true.
-    let (enough_allowance) = uint256_lt(new_allowance, current_allowance)
-    assert_not_zero(enough_allowance)
+    // Validates amount <= caller_allowance and returns 1 if true.
+    let (enough_allowance) = uint256_le(amount, caller_allowance);
+    assert_not_zero(enough_allowance);
 
-    ERC20_approve(caller, spender, new_allowance)
+    ERC20_transfer(sender, recipient, amount);
 
-    # Cairo equivalent to 'return (true)'
-    return (1)
-end
+    // Subtract allowance.
+    let (new_allowance: Uint256) = uint256_sub(caller_allowance, amount);
+    ERC20_allowances.write(sender, caller, new_allowance);
 
-@external
-func permissionedMint{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    recipient : felt, amount : Uint256
-):
-    alloc_locals
-    permitted_minter_only()
-    local syscall_ptr : felt* = syscall_ptr
-
-    ERC20_mint(recipient=recipient, amount=amount)
-
-    return ()
-end
+    // Cairo equivalent to 'return (true)'
+    return (1,);
+}
 
 @external
-func permissionedBurn{syscall_ptr : felt*, pedersen_ptr : HashBuiltin*, range_check_ptr}(
-    account : felt, amount : Uint256
-):
-    alloc_locals
-    permitted_minter_only()
-    local syscall_ptr : felt* = syscall_ptr
+func approve{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    spender: felt, amount: Uint256
+) -> (success: felt) {
+    let (caller) = get_caller_address();
+    ERC20_approve(caller, spender, amount);
 
-    ERC20_burn(account=account, amount=amount)
+    // Cairo equivalent to 'return (true)'
+    return (1,);
+}
 
-    return ()
-end
+@external
+func increaseAllowance{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    spender: felt, added_value: Uint256
+) -> (success: felt) {
+    alloc_locals;
+    uint256_check(added_value);
+    let (local caller) = get_caller_address();
+    let (local current_allowance: Uint256) = ERC20_allowances.read(caller, spender);
+
+    // Add allowance.
+    let (local new_allowance: Uint256, is_overflow) = uint256_add(current_allowance, added_value);
+    assert (is_overflow) = 0;
+
+    ERC20_approve(caller, spender, new_allowance);
+
+    // Cairo equivalent to 'return (true)'
+    return (1,);
+}
+
+@external
+func decreaseAllowance{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    spender: felt, subtracted_value: Uint256
+) -> (success: felt) {
+    alloc_locals;
+    uint256_check(subtracted_value);
+    let (local caller) = get_caller_address();
+    let (local current_allowance: Uint256) = ERC20_allowances.read(owner=caller, spender=spender);
+    let (local new_allowance: Uint256) = uint256_sub(current_allowance, subtracted_value);
+
+    // Validates new_allowance < current_allowance and returns 1 if true.
+    let (enough_allowance) = uint256_lt(new_allowance, current_allowance);
+    assert_not_zero(enough_allowance);
+
+    ERC20_approve(caller, spender, new_allowance);
+
+    // Cairo equivalent to 'return (true)'
+    return (1,);
+}
+
+@external
+func permissionedMint{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    recipient: felt, amount: Uint256
+) {
+    alloc_locals;
+    permitted_minter_only();
+    local syscall_ptr: felt* = syscall_ptr;
+
+    ERC20_mint(recipient=recipient, amount=amount);
+
+    return ();
+}
+
+@external
+func permissionedBurn{syscall_ptr: felt*, pedersen_ptr: HashBuiltin*, range_check_ptr}(
+    account: felt, amount: Uint256
+) {
+    alloc_locals;
+    permitted_minter_only();
+    local syscall_ptr: felt* = syscall_ptr;
+
+    ERC20_burn(account=account, amount=amount);
+
+    return ();
+}
