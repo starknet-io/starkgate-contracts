@@ -27,6 +27,7 @@ UPGRADE_DELAY = 0
 EIC_HASH = 0
 NOT_FINAL = 0
 
+
 def int_16(val):
     return int(val, 16)
 
@@ -114,7 +115,6 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
     )
     contract_abi = contract_declare_tx.contract_class.abi
     contract_declare_result = await admin_account_client.declare(contract_declare_tx)
-    print(contract_declare_tx)
     print(f"{name} declare hash:", hex(contract_declare_result.class_hash))
     print(f"{name} tx hash:", hex(contract_declare_result.transaction_hash))
 
@@ -122,12 +122,25 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
     await admin_account_client.wait_for_tx(contract_declare_result.transaction_hash, wait_for_accept=True)
     print(f"{name} contract declared")
 
+    proxy_contract_declare_tx = make_declare_tx(
+        compilation_source=["contracts/upgradability_proxy/proxy.cairo"],
+        cairo_path=['contracts/'],
+    )
+    proxy_contract_abi = proxy_contract_declare_tx.contract_class.abi
+    proxy_contract_declare_result = await admin_account_client.declare(proxy_contract_declare_tx)
+    print("Proxy declare hash:", hex(proxy_contract_declare_result.class_hash))
+    print("Proxy tx hash:", hex(proxy_contract_declare_result.transaction_hash))
+
+    print("Waiting for tx to be accepted...")
+    await admin_account_client.wait_for_tx(proxy_contract_declare_result.transaction_hash, wait_for_accept=True)
+    print("Proxy contract declared")
+
     proxy_deploy_tx = make_deploy_tx(
         compilation_source=['contracts/upgradability_proxy/proxy.cairo'],
         constructor_calldata=[UPGRADE_DELAY],
         cairo_path=['contracts/'],
     )
-    print(f"Deploying {name} proxy contract...")
+    print("Deploying Proxy contract...")
     proxy_deploy_result = await admin_account_client.deploy(proxy_deploy_tx)
     print(proxy_deploy_result)
     print("Proxy contract address:", hex(proxy_deploy_result.contract_address))
@@ -139,13 +152,13 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
         wait_for_accept=True
     )
     print("Proxy contract is deployed!")
-
-    contract_with_proxy = Contract(
-        address=proxy_deploy_result.contract_address, abi=contract_abi, client=admin_account_client
+    proxy = Contract(
+        address=proxy_deploy_result.contract_address,
+        abi=proxy_contract_abi,
+        client=admin_account_client
     )
-    print("Contract address for initializing:", hex(contract_with_proxy.address))
 
-    init_governance_invoke = await contract_with_proxy.functions["init_governance"].invoke()
+    init_governance_invoke = await proxy.functions["init_governance"].invoke(max_fee=int(1e16))
     print("Waiting for init_governance tx to be accepted...", hex(init_governance_invoke.hash))
     await init_governance_invoke.wait_for_acceptance(wait_for_accept=True)
     implementation_data = [
@@ -154,15 +167,22 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
         initialize_data,
         NOT_FINAL,
     ]
-    add_implementation_invoke = await contract_with_proxy.functions["add_implementation"].invoke(
-        implementation_data
+    add_implementation_invoke = await proxy.functions["add_implementation"].invoke(
+        *implementation_data,
+        max_fee=int(1e16)
     )
     print("Waiting for add_implementation tx to be accepted...", hex(add_implementation_invoke.hash))
     await add_implementation_invoke.wait_for_acceptance(wait_for_accept=True)
-    upgrade_to_invoke = await contract_with_proxy.functions["upgrade_to"].invoke(
-        implementation_data
+    upgrade_to_invoke = await proxy.functions["upgrade_to"].invoke(
+        *implementation_data,
+        max_fee=int(1e16)
     )
     print("Waiting for upgrade_to tx to be accepted...", hex(upgrade_to_invoke.hash))
     await upgrade_to_invoke.wait_for_acceptance(wait_for_accept=True)
+
+    contract_with_proxy = Contract(
+        address=proxy_deploy_result.contract_address, abi=contract_abi, client=admin_account_client
+    )
+    print("Contract address for initializing:", hex(contract_with_proxy.address))
 
     return contract_with_proxy

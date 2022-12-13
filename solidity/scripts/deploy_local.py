@@ -1,3 +1,5 @@
+import os
+
 from brownie import Contract, USDCToken, Proxy, StarknetERC20Bridge, accounts
 from eth_abi import encode
 
@@ -11,7 +13,6 @@ def main():
     Deployment and setup script for L1 Bridge. Requires extra setup due to ERC20 contract
     needed to be availablei n the local blockchain in order to set it up on the bridge.
     """
-
 
     l2_bridge_contract_address = "0x012"
     admin_account = accounts.load("admin")

@@ -8,11 +8,13 @@ from deploy_lib import (
     deploy_with_proxy,
     get_account_client,
     get_psn_network,
+    int_16,
 )
 
 ADMIN_ACCOUNT_ADDRESS = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_ADDRESS")
 ADMIN_ACCOUNT_KEY = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_KEY")
 L2_BRIDGE_ADDRESS = os.environ.get("PARACLEAR_L2_BRIDGE_ADDRESS")
+# L2_BRIDGE_ADDRESS = "0x070e8a66585fde35fc444d13360d5f7cfb0384a56a14786c869e0bce7315d8a3"
 
 
 async def deploy():
@@ -26,7 +28,7 @@ async def deploy():
         encode_shortstring('USDC'),
         encode_shortstring('USDC'),
         6,
-        [L2_BRIDGE_ADDRESS],  # The bridge is the minter and burner for the erc20 contract
+        int_16(L2_BRIDGE_ADDRESS),  # The bridge is the minter and burner for the erc20 contract
     ]
     usdc_proxy = await deploy_with_proxy(
         'ERC20/ERC20.cairo',
@@ -34,7 +36,7 @@ async def deploy():
         initialize_data,
     )
     # Logs
-    print("USDC contract:", hex(usdc_proxy.contract_address))
+    print("USDC contract:", hex(usdc_proxy.address))
 
 
 asyncio.run(deploy())
