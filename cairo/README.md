@@ -28,3 +28,11 @@ $ source dev/bin/activate
 ```bash
 nile compile
 ```
+
+### Running scripts
+
+Each script has a set of environment variables required in order to run.
+
+```bash
+python3 scripts/<script_file>
+```
