@@ -15,6 +15,7 @@ ADMIN_ACCOUNT_ADDRESS = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_ADDRESS")
 ADMIN_ACCOUNT_KEY = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_KEY")
 L2_BRIDGE_ADDRESS = os.environ.get("PARACLEAR_L2_BRIDGE_ADDRESS")
 L1_USER_ADDRESS = os.environ.get("PARACLEAR_L1_USER_ADDRESS")
+AMOUNT = os.environ.get("AMOUNT")
 
 
 async def deploy():
@@ -38,7 +39,7 @@ async def deploy():
 
     initiate_withdraw_invoke = await bridge.functions['initiate_withdraw'].invoke(
         int_16(L1_USER_ADDRESS),
-        to_uint256(100000000000),
+        to_uint256(AMOUNT),
         max_fee=int(1e16),
     )
     print(

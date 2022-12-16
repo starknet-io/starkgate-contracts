@@ -1,10 +1,10 @@
 import os
 
-from brownie import Contract, StarknetERC20Bridge, USDCToken, accounts
+from brownie import USDCToken, accounts
 
 
 L1_TOKEN_ADDRESS = os.environ.get("PARACLEAR_L1_TOKEN_ADDRESS")
-L2_USER_ADDRESS = os.environ.get("PARACLEAR_L2_USER_ADDRESS")
+USER_PRIVATE_KEY = os.environ.get("USER_PRIVATE_KEY")
 
 
 def main():
@@ -14,12 +14,12 @@ def main():
     before running the deploy script.
     """
 
-    admin_account = accounts.load("admin")
+    user_account = accounts.add(USER_PRIVATE_KEY)
 
-    from_admin_account = {"from": admin_account}
+    from_user_account = {"from": user_account}
     usdc = USDCToken.at(L1_TOKEN_ADDRESS)
 
-    tx = usdc.balanceOf(admin_account, from_admin_account)
+    tx = usdc.balanceOf(user_account, from_user_account)
 
-    print("old balance ", 100000000000)
-    print("new balance ", tx)
+    # Return usdc balance without added precision.
+    print("new balance ", tx * 10 ** -6)

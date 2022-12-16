@@ -4,7 +4,7 @@ from brownie import Contract, StarknetERC20Bridge, accounts
 
 
 L1_BRIDGE_ADDRESS = os.environ.get("PARACLEAR_L1_BRIDGE_ADDRESS")
-L1_USER_ADDRESS = os.environ.get("PARACLEAR_L1_USER_ADDRESS")
+L1_USER_PRIVATE_KEY = os.environ.get("PARACLEAR_L1_USER_PRIVATE_KEY")
 
 
 def main():
@@ -14,9 +14,9 @@ def main():
     before running the deploy script.
     """
 
-    admin_account = accounts.load("admin")
+    user_account = accounts.add(L1_USER_PRIVATE_KEY)
 
-    from_admin_account = {"from": admin_account}
+    from_user_account = {"from": user_account}
 
     bridge = Contract.from_abi(
         "StarknetERC20Bridge",
@@ -27,6 +27,6 @@ def main():
     # 100,000 USDC with 6 decimals
     amount = 100000000000
 
-    tx = bridge.withdraw(amount, L1_USER_ADDRESS, from_admin_account)
+    tx = bridge.withdraw(amount, user_account, from_user_account)
 
     print("withdraw ", tx)

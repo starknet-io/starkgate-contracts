@@ -6,6 +6,7 @@ from eth_abi import encode
 
 UPGRADE_DELAY = 0
 PRIVATE_STARKNET_CORE_CONTRACT = "0xEc86FAD336de60C953828b5cDb1EAc1D68fBdc82"
+L1_ADMIN_PRIVATE_KEY = os.environ.get("PARACLEAR_L1_ADMIN_PRIVATE_KEY")
 
 
 def main():
@@ -14,8 +15,7 @@ def main():
     needed to be availablei n the local blockchain in order to set it up on the bridge.
     """
 
-    l2_bridge_contract_address = "0x012"
-    admin_account = accounts.load("admin")
+    admin_account = accounts.add(L1_ADMIN_PRIVATE_KEY)
 
     from_admin_account = {"from": admin_account}
     usdc_contact = USDCToken.deploy(from_admin_account)
