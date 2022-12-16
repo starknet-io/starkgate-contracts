@@ -6,7 +6,7 @@ from starkware.cairo.common.math import assert_lt_felt, assert_not_zero
 from starkware.cairo.common.uint256 import Uint256
 from starkware.starknet.common.messages import send_message_to_l1
 from starkware.starknet.common.syscalls import get_caller_address
-from ERC20.mintable_token_interface import IMintableToken
+from starknet.std_contracts.ERC20.mintable_token_interface import IMintableToken
 from starknet.std_contracts.upgradability_proxy.initializable import (
     initialized,
     set_initialized,
