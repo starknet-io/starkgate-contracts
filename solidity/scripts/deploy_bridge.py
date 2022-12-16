@@ -6,7 +6,7 @@ from eth_abi import encode
 
 UPGRADE_DELAY = 0
 PRIVATE_STARKNET_CORE_CONTRACT = "0xEc86FAD336de60C953828b5cDb1EAc1D68fBdc82"
-USDC_CONTRACT_ADDRESS = "0xf4242092b79BDF3662F784A9c25ce5CD0D6fAE0B"
+L1_TOKEN_ADDRESS = os.environ.get("PARACLEAR_L1_TOKEN_ADDRESS")
 L2_BRIDGE_ADDRESS = os.environ.get("PARACLEAR_L2_BRIDGE_ADDRESS")
 # Not needed but the contract initializer expects at least one address for it
 # even though the value of numOfSubContracts is set to 0. #contracts.StarknetTokenBridge.sol LN50.
@@ -29,7 +29,7 @@ def main():
         ['address', 'address', 'address'],
         [
             EIC_CONTRACT_PLACEHOLDER,
-            USDC_CONTRACT_ADDRESS,
+            L1_TOKEN_ADDRESS,
             PRIVATE_STARKNET_CORE_CONTRACT,
         ],
     )

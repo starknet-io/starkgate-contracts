@@ -28,6 +28,10 @@ EIC_HASH = 0
 NOT_FINAL = 0
 
 
+def to_uint256(val):
+    return dict(low=val, high=0)
+
+
 def int_16(val):
     return int(val, 16)
 
@@ -123,7 +127,7 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
     print(f"{name} contract declared")
 
     proxy_contract_declare_tx = make_declare_tx(
-        compilation_source=["contracts/upgradability_proxy/proxy.cairo"],
+        compilation_source=["contracts/starknet/std_contracts/upgradability_proxy/proxy.cairo"],
         cairo_path=['contracts/'],
     )
     proxy_contract_abi = proxy_contract_declare_tx.contract_class.abi
@@ -136,7 +140,7 @@ async def deploy_with_proxy(name: str, admin_account_client, initialize_data) ->
     print("Proxy contract declared")
 
     proxy_deploy_tx = make_deploy_tx(
-        compilation_source=['contracts/upgradability_proxy/proxy.cairo'],
+        compilation_source=['contracts/starknet/std_contracts/upgradability_proxy/proxy.cairo'],
         constructor_calldata=[UPGRADE_DELAY],
         cairo_path=['contracts/'],
     )
