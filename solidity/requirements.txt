@@ -6,6 +6,7 @@ attrs==22.1.0
 base58==2.1.1
 bitarray==2.6.0
 black==22.10.0
+cairo-lang==0.10.1
 certifi==2022.9.24
 charset-normalizer==2.1.1
 click==8.1.3

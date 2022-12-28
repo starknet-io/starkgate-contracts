@@ -1,3 +1,5 @@
+import os
+
 from abc import ABC, abstractmethod
 from typing import Iterator, List, Optional
 
@@ -5,14 +7,19 @@ import pytest
 
 from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.eth.eth_test_utils import EthAccount, EthContract, EthReceipt, EthTestUtils
-from starkware.solidity.test_contracts.contracts import TestERC20
-from starkware.solidity.upgrade.contracts import Proxy
-from starkware.starknet.apps.starkgate.eth.contracts import StarknetERC20Bridge
-from starkware.starknet.apps.starkgate.eth.test_contracts import StarknetEthBridgeTester
-from starkware.starknet.solidity.starknet_test_utils import (
+from starkware.starknet.testing.contract import StarknetContract
+from brownie import Proxy, StarknetERC20Bridge, StarknetEthBridgeTester, TestERC20
+from tests.utils import (
     UPGRADE_DELAY,
     add_implementation_and_upgrade,
+    get_contract_class,
 )
+
+FILE_DIR = os.path.dirname(__file__)
+CAIRO_PATH = [os.path.join(FILE_DIR, "../../cairo/contracts")]
+BRIDGE_FILE = os.path.join(FILE_DIR, "../../cairo/contracts/token_bridge.cairo")
+ERC20_FILE = os.path.join(FILE_DIR, "../../cairo/contracts/starknet/std_contracts/ERC20/ERC20.cairo")
+PROXY_FILE = os.path.join(FILE_DIR, "../../cairo/contracts/starknet/std_contracts/upgradability_proxy/proxy.cairo")
 
 
 def str_to_felt(short_text: str) -> int:
@@ -68,6 +75,11 @@ def eth_test_utils() -> Iterator[EthTestUtils]:
         yield val
 
 
+def to_deploy_param(contract):
+    # Transform contract structure from Brownie to starkware
+    return dict(abi=contract.abi, bytecode=contract.bytecode)
+
+
 class TokenBridgeWrapper(ABC):
     """
     Wraps a StarknetTokenBridge so that all deriving contracts of it can be called with the same
@@ -86,8 +98,10 @@ class TokenBridgeWrapper(ABC):
     ):
         self.default_user = eth_test_utils.accounts[0]
         self.non_default_user = eth_test_utils.accounts[1]
-        self.contract = self.default_user.deploy(compiled_bridge_contract)
-        proxy = self.default_user.deploy(Proxy, UPGRADE_DELAY)
+        self.contract = self.default_user.deploy(
+            to_deploy_param(compiled_bridge_contract)
+        )
+        proxy = self.default_user.deploy(to_deploy_param(Proxy), UPGRADE_DELAY)
 
         add_implementation_and_upgrade(
             proxy=proxy,
@@ -163,7 +177,7 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         mock_starknet_messaging_contract: EthContract,
         eth_test_utils: EthTestUtils,
     ):
-        self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(TestERC20)
+        self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(to_deploy_param(TestERC20))
 
         super().__init__(
             compiled_bridge_contract=StarknetERC20Bridge,

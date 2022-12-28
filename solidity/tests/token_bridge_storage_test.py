@@ -4,23 +4,21 @@ import pytest
 
 from starkware.eth.eth_test_utils import EthContract, EthTestUtils
 from starkware.python.utils import from_bytes
-from starkware.starknet.apps.starkgate.eth.test_contracts import (
-    StarknetERC20BridgeTester,
-    StarknetEthBridgeTester,
-)
+from brownie import StarknetERC20BridgeTester, StarknetEthBridgeTester
+from tests.conftest import to_deploy_param
 
 LAYOUT_SIZE = 0
 
 
 @pytest.fixture(scope="session")
 def eth_tester(eth_test_utils: EthTestUtils) -> EthContract:
-    contract = eth_test_utils.accounts[0].deploy(StarknetEthBridgeTester)
+    contract = eth_test_utils.accounts[0].deploy(to_deploy_param(StarknetEthBridgeTester))
     return contract
 
 
 @pytest.fixture(scope="session")
 def erc20_tester(eth_test_utils: EthTestUtils) -> EthContract:
-    contract = eth_test_utils.accounts[0].deploy(StarknetERC20BridgeTester)
+    contract = eth_test_utils.accounts[0].deploy(to_deploy_param(StarknetERC20BridgeTester))
     return contract
 
 

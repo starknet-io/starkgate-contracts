@@ -2,7 +2,7 @@ import pytest
 
 from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.eth.eth_test_utils import EthContract, EthRevertException, EthTestUtils
-from starkware.solidity.test.conftest import ERC20BridgeWrapper, TokenBridgeWrapper
+from tests.conftest import ERC20BridgeWrapper, TokenBridgeWrapper
 from starkware.starknet.services.api.messages import StarknetMessageToL1, StarknetMessageToL2
 from starkware.starknet.testing.contracts import MockStarknetMessaging
 

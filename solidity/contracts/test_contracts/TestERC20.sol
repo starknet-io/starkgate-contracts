@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/starkware/solidity/tokens/ERC20/ERC20.sol";
+import "contracts/external/tokens/ERC20/ERC20.sol";
 
 /*
   An ERC20 for testing where anyone can set the balance for everyone.
