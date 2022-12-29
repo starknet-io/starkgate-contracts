@@ -7,13 +7,8 @@ import pytest
 
 from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.eth.eth_test_utils import EthAccount, EthContract, EthReceipt, EthTestUtils
-from starkware.starknet.testing.contract import StarknetContract
 from brownie import Proxy, StarknetERC20Bridge, StarknetEthBridgeTester, TestERC20
-from tests.utils import (
-    UPGRADE_DELAY,
-    add_implementation_and_upgrade,
-    get_contract_class,
-)
+from tests.utils import UPGRADE_DELAY, add_implementation_and_upgrade
 
 FILE_DIR = os.path.dirname(__file__)
 CAIRO_PATH = [os.path.join(FILE_DIR, "../../cairo/contracts")]
