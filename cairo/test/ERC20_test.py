@@ -5,15 +5,12 @@ import random
 import pytest
 
 from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
-from starkware.starknet.business_logic.execution.objects import Event
-from starkware.starknet.public.abi import get_selector_from_name
-from starkware.starknet.solidity.starknet_test_utils import Uint256
-from starkware.starknet.std_contracts.ERC20.contracts import erc20_contract_class
-from starkware.starknet.std_contracts.upgradability_proxy.contracts import proxy_contract_class
-from starkware.starknet.std_contracts.upgradability_proxy.test_utils import advance_time
 from starkware.starknet.testing.contract import StarknetContract
 from starkware.starknet.testing.starknet import Starknet
 from starkware.starkware_utils.error_handling import StarkException
+
+from test.conftest import CAIRO_PATH, ERC20_FILE
+from test.utils import assert_last_event, str_to_felt, Uint256
 
 TRANSFER_EVENT = "Transfer"
 APPROVAL_EVENT = "Approval"
@@ -46,67 +43,8 @@ BURN_AMOUNT = int((initial_balances[initialized_account] + 1) / 2)
 UPGRADE_DELAY = 0
 
 
-def assert_last_event(
-    starknet: Starknet,
-    contract_: StarknetContract,
-    event_name: str,
-    from_: int,
-    to_: int,
-    amount: int,
-):
-    expected_event = Event(
-        from_address=contract_.contract_address,
-        keys=[get_selector_from_name(event_name)],
-        data=[
-            from_,
-            to_,
-            Uint256(amount).low,
-            Uint256(amount).high,
-        ],
-    )
-    assert expected_event == starknet.state.events[-1]
 
-
-@pytest.fixture(scope="session")
-def token_decimals() -> int:
-    return 6
-
-
-@pytest.fixture(scope="session")
-def token_symbol() -> int:
-    return str_to_felt("TKN")
-
-
-@pytest.fixture(scope="session")
-def token_name() -> int:
-    return str_to_felt("TOKEN")
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
-async def session_starknet() -> Starknet:
-    starknet = await Starknet.empty()
-    # We want to start with a non-zero block/time (this would fail tests).
-    advance_time(starknet=starknet, block_time_diff=1, block_num_diff=1)
-    return starknet
-
-
-@pytest.fixture(scope="session")
-async def session_proxy_contract(session_starknet: Starknet) -> StarknetContract:
-    proxy = await session_starknet.deploy(
-        constructor_calldata=[UPGRADE_DELAY], contract_class=proxy_contract_class
-    )
-    await proxy.init_governance().invoke(caller_address=GOVERNOR_ADDRESS)
-    return proxy
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def session_token_contract(
     session_starknet: Starknet,
     session_proxy_contract: StarknetContract,
@@ -114,7 +52,10 @@ async def session_token_contract(
     token_symbol: int,
     token_decimals: int,
 ) -> StarknetContract:
-    declared_token_impl = await session_starknet.declare(contract_class=erc20_contract_class)
+    declared_token_impl = await session_starknet.declare(
+        ERC20_FILE,
+        cairo_path=CAIRO_PATH,
+    )
     NOT_FINAL = False
     NO_EIC = 0
     proxy_func_params = [
@@ -129,10 +70,10 @@ async def session_token_contract(
         NOT_FINAL,
     ]
     # Set a first implementation on the proxy.
-    await session_proxy_contract.add_implementation(*proxy_func_params).invoke(
+    await session_proxy_contract.add_implementation(*proxy_func_params).execute(
         caller_address=GOVERNOR_ADDRESS
     )
-    await session_proxy_contract.upgrade_to(*proxy_func_params).invoke(
+    await session_proxy_contract.upgrade_to(*proxy_func_params).execute(
         caller_address=GOVERNOR_ADDRESS
     )
     wrapped_session_token = session_proxy_contract.replace_abi(
@@ -143,7 +84,7 @@ async def session_token_contract(
     for account in initial_balances:
         await wrapped_session_token.permissionedMint(
             recipient=account, amount=Uint256(initial_balances[account]).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
     return wrapped_session_token
 
 
@@ -164,7 +105,7 @@ async def token_contract(
         state=starknet.state,
         abi=session_token_contract.abi,
         contract_address=session_token_contract.contract_address,
-        deploy_execution_info=session_token_contract.deploy_execution_info,
+        deploy_call_info=session_token_contract.deploy_call_info,
     )
 
 
@@ -236,7 +177,7 @@ async def test_balance_of(token_contract: StarknetContract):
 async def test_transfer_zero_sender(token_contract: StarknetContract):
     amount = Uint256(TRANSFER_AMOUNT).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(sender\)"):
-        await token_contract.transfer(recipient=uninitialized_account, amount=amount).invoke(
+        await token_contract.transfer(recipient=uninitialized_account, amount=amount).execute(
             caller_address=0
         )
 
@@ -246,14 +187,14 @@ async def test_transfer_zero_recipient(token_contract: StarknetContract):
     with pytest.raises(StarkException, match=r"assert_not_zero\(recipient\)"):
         await token_contract.transfer(
             recipient=0, amount=Uint256(TRANSFER_AMOUNT).uint256()
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
 async def test_transfer_amount_bigger_than_balance(token_contract: StarknetContract):
     amount = Uint256(initial_balances[initialized_account] + 1).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_balance\)"):
-        await token_contract.transfer(recipient=uninitialized_account, amount=amount).invoke(
+        await token_contract.transfer(recipient=uninitialized_account, amount=amount).execute(
             caller_address=initialized_account
         )
 
@@ -262,7 +203,7 @@ async def test_transfer_amount_bigger_than_balance(token_contract: StarknetContr
 async def test_transfer_invalid_uint256_amount(token_contract: StarknetContract):
     amount = Uint256(AMOUNT_BOUND).uint256()
     with pytest.raises(StarkException, match=r"uint256_check\(amount\)"):
-        await token_contract.transfer(recipient=uninitialized_account, amount=amount).invoke(
+        await token_contract.transfer(recipient=uninitialized_account, amount=amount).execute(
             caller_address=initialized_account
         )
 
@@ -271,7 +212,7 @@ async def test_transfer_invalid_uint256_amount(token_contract: StarknetContract)
 async def test_transfer_happy_flow(starknet: Starknet, token_contract: StarknetContract):
     transfer_amount = Uint256(TRANSFER_AMOUNT).uint256()
 
-    await token_contract.transfer(recipient=uninitialized_account, amount=transfer_amount).invoke(
+    await token_contract.transfer(recipient=uninitialized_account, amount=transfer_amount).execute(
         caller_address=initialized_account
     )
     assert_last_event(
@@ -291,7 +232,7 @@ async def test_transfer_happy_flow(starknet: Starknet, token_contract: StarknetC
     execution_info = await token_contract.totalSupply().call()
     assert execution_info.result[0] == Uint256(initial_total_supply).uint256()
 
-    await token_contract.transfer(recipient=initialized_account, amount=transfer_amount).invoke(
+    await token_contract.transfer(recipient=initialized_account, amount=transfer_amount).execute(
         caller_address=uninitialized_account
     )
     execution_info = await token_contract.balanceOf(account=initialized_account).call()
@@ -300,7 +241,7 @@ async def test_transfer_happy_flow(starknet: Starknet, token_contract: StarknetC
     assert execution_info.result[0] == Uint256(0).uint256()
 
     # Tests the case of sender = recipient.
-    await token_contract.transfer(recipient=initialized_account, amount=transfer_amount).invoke(
+    await token_contract.transfer(recipient=initialized_account, amount=transfer_amount).execute(
         caller_address=initialized_account
     )
     execution_info = await token_contract.balanceOf(account=initialized_account).call()
@@ -311,7 +252,7 @@ async def test_transfer_happy_flow(starknet: Starknet, token_contract: StarknetC
 async def test_approve_zero_owner(token_contract: StarknetContract):
     amount = Uint256(APPROVE_AMOUNT).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(caller\)"):
-        await token_contract.approve(spender=uninitialized_account, amount=amount).invoke(
+        await token_contract.approve(spender=uninitialized_account, amount=amount).execute(
             caller_address=0
         )
 
@@ -320,7 +261,7 @@ async def test_approve_zero_owner(token_contract: StarknetContract):
 async def test_approve_zero_spender(token_contract: StarknetContract):
     amount = Uint256(APPROVE_AMOUNT).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(spender\)"):
-        await token_contract.approve(spender=0, amount=amount).invoke(
+        await token_contract.approve(spender=0, amount=amount).execute(
             caller_address=initialized_account
         )
 
@@ -329,7 +270,7 @@ async def test_approve_zero_spender(token_contract: StarknetContract):
 async def test_approve_invalid_uint256_amount(token_contract: StarknetContract):
     amount = Uint256(AMOUNT_BOUND).uint256()
     with pytest.raises(StarkException, match=r"uint256_check\(amount\)"):
-        await token_contract.approve(spender=uninitialized_account, amount=amount).invoke(
+        await token_contract.approve(spender=uninitialized_account, amount=amount).execute(
             caller_address=initialized_account
         )
 
@@ -341,7 +282,7 @@ async def test_approve_happy_flow(starknet: Starknet, token_contract: StarknetCo
     ).call()
     assert execution_info.result[0] == Uint256(0).uint256()
     approved_amount = Uint256(APPROVE_AMOUNT).uint256()
-    await token_contract.approve(spender=uninitialized_account, amount=approved_amount).invoke(
+    await token_contract.approve(spender=uninitialized_account, amount=approved_amount).execute(
         caller_address=initialized_account
     )
 
@@ -368,43 +309,43 @@ async def test_transfer_from_zero_sender(token_contract: StarknetContract):
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_allowance\)"):
         await token_contract.transferFrom(
             sender=0, recipient=uninitialized_account, amount=Uint256(TRANSFER_AMOUNT).uint256()
-        ).invoke(caller_address=another_account)
+        ).execute(caller_address=another_account)
 
 
 @pytest.mark.asyncio
 async def test_transfer_from_zero_recipient(token_contract: StarknetContract):
     amount = Uint256(TRANSFER_AMOUNT).uint256()
-    await token_contract.approve(spender=another_account, amount=amount).invoke(
+    await token_contract.approve(spender=another_account, amount=amount).execute(
         caller_address=initialized_account
     )
     with pytest.raises(StarkException, match=r"assert_not_zero\(recipient\)"):
         await token_contract.transferFrom(
             sender=initialized_account, recipient=0, amount=amount
-        ).invoke(caller_address=another_account)
+        ).execute(caller_address=another_account)
 
 
 @pytest.mark.asyncio
 async def test_transfer_from_amount_bigger_than_balance(token_contract: StarknetContract):
     await token_contract.approve(
         spender=another_account, amount=Uint256(HIGH_APPROVE_AMOUNT).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     amount = Uint256(initial_balances[initialized_account] + 1).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_balance\)"):
         await token_contract.transferFrom(
             sender=initialized_account, recipient=uninitialized_account, amount=amount
-        ).invoke(caller_address=another_account)
+        ).execute(caller_address=another_account)
 
 
 @pytest.mark.asyncio
 async def test_transfer_from_amount_bigger_than_allowance(token_contract: StarknetContract):
     await token_contract.approve(
         spender=another_account, amount=Uint256(APPROVE_AMOUNT).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     amount = Uint256(APPROVE_AMOUNT + 1).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_allowance\)"):
         await token_contract.transferFrom(
             sender=initialized_account, recipient=uninitialized_account, amount=amount
-        ).invoke(caller_address=another_account)
+        ).execute(caller_address=another_account)
 
 
 @pytest.mark.asyncio
@@ -413,7 +354,7 @@ async def test_transfer_from_invalid_uint256_amount(token_contract: StarknetCont
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_allowance\)"):
         await token_contract.transferFrom(
             sender=initialized_account, recipient=uninitialized_account, amount=amount
-        ).invoke(caller_address=another_account)
+        ).execute(caller_address=another_account)
 
 
 @pytest.mark.asyncio
@@ -423,12 +364,12 @@ async def test_transfer_from_happy_flow(
 ):
     await token_contract.approve(
         spender=another_account, amount=Uint256(approve_num).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     await token_contract.transferFrom(
         sender=initialized_account,
         recipient=uninitialized_account,
         amount=Uint256(TRANSFER_AMOUNT).uint256(),
-    ).invoke(caller_address=another_account)
+    ).execute(caller_address=another_account)
     assert_last_event(
         starknet=starknet,
         contract_=token_contract,
@@ -444,7 +385,7 @@ async def test_increase_allowance_zero_spender(token_contract: StarknetContract)
     with pytest.raises(StarkException, match=r"assert_not_zero\(spender\)"):
         await token_contract.increaseAllowance(
             spender=0, added_value=Uint256(APPROVE_AMOUNT).uint256()
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
@@ -452,26 +393,26 @@ async def test_increase_allowance_invalid_amount(token_contract: StarknetContrac
     with pytest.raises(StarkException, match=r"uint256_check\(added_value\)"):
         await token_contract.increaseAllowance(
             spender=uninitialized_account, added_value=Uint256(AMOUNT_BOUND).uint256()
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
 async def test_increase_allowance_overflow(token_contract: StarknetContract):
     await token_contract.increaseAllowance(
         spender=uninitialized_account, added_value=Uint256(APPROVE_AMOUNT).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     with pytest.raises(StarkException, match=r"assert \(is_overflow\) = 0"):
         await token_contract.increaseAllowance(
             spender=uninitialized_account,
             added_value=Uint256(AMOUNT_BOUND - APPROVE_AMOUNT).uint256(),
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
 async def test_decrease_allowance_zero_spender(token_contract: StarknetContract):
     approve_amount = Uint256(APPROVE_AMOUNT).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_allowance\)"):
-        await token_contract.decreaseAllowance(spender=0, subtracted_value=approve_amount).invoke(
+        await token_contract.decreaseAllowance(spender=0, subtracted_value=approve_amount).execute(
             caller_address=initialized_account
         )
 
@@ -480,11 +421,11 @@ async def test_decrease_allowance_zero_spender(token_contract: StarknetContract)
 async def test_decrease_allowance_bigger_than_allowance(token_contract: StarknetContract):
     await token_contract.increaseAllowance(
         spender=uninitialized_account, added_value=Uint256(APPROVE_AMOUNT).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_allowance\)"):
         await token_contract.decreaseAllowance(
             spender=uninitialized_account, subtracted_value=Uint256(APPROVE_AMOUNT + 1).uint256()
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
@@ -492,7 +433,7 @@ async def test_decrease_allowance_invalid_amount(token_contract: StarknetContrac
     with pytest.raises(StarkException, match=r"uint256_check\(subtracted_value\)"):
         await token_contract.decreaseAllowance(
             spender=uninitialized_account, subtracted_value=Uint256(AMOUNT_BOUND).uint256()
-        ).invoke(caller_address=initialized_account)
+        ).execute(caller_address=initialized_account)
 
 
 @pytest.mark.asyncio
@@ -506,7 +447,7 @@ async def test_increase_and_decrease_allowance_happy_flow(
 
     await token_contract.increaseAllowance(
         spender=uninitialized_account, added_value=Uint256(APPROVE_AMOUNT).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     assert_last_event(
         starknet=starknet,
         contract_=token_contract,
@@ -523,7 +464,7 @@ async def test_increase_and_decrease_allowance_happy_flow(
 
     await token_contract.decreaseAllowance(
         spender=uninitialized_account, subtracted_value=Uint256(int(APPROVE_AMOUNT / 2)).uint256()
-    ).invoke(caller_address=initialized_account)
+    ).execute(caller_address=initialized_account)
     assert_last_event(
         starknet=starknet,
         contract_=token_contract,
@@ -544,7 +485,7 @@ async def test_permissioned_mint_wrong_minter(token_contract: StarknetContract):
     with pytest.raises(StarkException, match="assert caller_address = permitted_address"):
         await token_contract.permissionedMint(
             recipient=uninitialized_account, amount=Uint256(MINT_AMOUNT).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS + 1)
+        ).execute(caller_address=MINTER_ADDRESS + 1)
 
 
 @pytest.mark.asyncio
@@ -552,7 +493,7 @@ async def test_permissioned_mint_zero_recipient(token_contract: StarknetContract
     with pytest.raises(StarkException, match=r"assert_not_zero\(recipient\)"):
         await token_contract.permissionedMint(
             recipient=0, amount=Uint256(MINT_AMOUNT).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
 
 
 @pytest.mark.asyncio
@@ -560,7 +501,7 @@ async def test_permissioned_mint_invalid_uint256_amount(token_contract: Starknet
     with pytest.raises(StarkException, match=r"uint256_check\(amount\)"):
         await token_contract.permissionedMint(
             recipient=uninitialized_account, amount=Uint256(AMOUNT_BOUND).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
 
 
 @pytest.mark.asyncio
@@ -569,14 +510,14 @@ async def test_permissioned_mint_total_supply_out_of_range(token_contract: Stark
     with pytest.raises(StarkException, match=r"assert \(is_overflow\) = 0"):
         await token_contract.permissionedMint(
             recipient=uninitialized_account, amount=amount
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
 
 
 @pytest.mark.asyncio
 async def test_permissioned_mint_happy_flow(starknet: Starknet, token_contract: StarknetContract):
     await token_contract.permissionedMint(
         recipient=uninitialized_account, amount=Uint256(MINT_AMOUNT).uint256()
-    ).invoke(caller_address=MINTER_ADDRESS)
+    ).execute(caller_address=MINTER_ADDRESS)
     assert_last_event(
         starknet=starknet,
         contract_=token_contract,
@@ -597,7 +538,7 @@ async def test_permissioned_burn_wrong_minter(token_contract: StarknetContract):
     with pytest.raises(StarkException, match="assert caller_address = permitted_address"):
         await token_contract.permissionedBurn(
             account=initialized_account, amount=Uint256(BURN_AMOUNT).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS + 1)
+        ).execute(caller_address=MINTER_ADDRESS + 1)
 
 
 @pytest.mark.asyncio
@@ -605,7 +546,7 @@ async def test_permissioned_burn_zero_account(token_contract: StarknetContract):
     with pytest.raises(StarkException, match=r"assert_not_zero\(account\)"):
         await token_contract.permissionedBurn(
             account=0, amount=Uint256(BURN_AMOUNT).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
 
 
 @pytest.mark.asyncio
@@ -613,14 +554,14 @@ async def test_permissioned_burn_invalid_uint256_amount(token_contract: Starknet
     with pytest.raises(StarkException, match=r"uint256_check\(amount\)"):
         await token_contract.permissionedBurn(
             account=initialized_account, amount=Uint256(AMOUNT_BOUND).uint256()
-        ).invoke(caller_address=MINTER_ADDRESS)
+        ).execute(caller_address=MINTER_ADDRESS)
 
 
 @pytest.mark.asyncio
 async def test_permissioned_burn_amount_bigger_than_balance(token_contract: StarknetContract):
     amount = Uint256(initial_balances[initialized_account] + 1).uint256()
     with pytest.raises(StarkException, match=r"assert_not_zero\(enough_balance\)"):
-        await token_contract.permissionedBurn(account=initialized_account, amount=amount).invoke(
+        await token_contract.permissionedBurn(account=initialized_account, amount=amount).execute(
             caller_address=MINTER_ADDRESS
         )
 
@@ -629,10 +570,10 @@ async def test_permissioned_burn_amount_bigger_than_balance(token_contract: Star
 async def test_permissioned_burn_happy_flow(starknet: Starknet, token_contract: StarknetContract):
     await token_contract.permissionedMint(
         recipient=initialized_account, amount=Uint256(MINT_AMOUNT).uint256()
-    ).invoke(caller_address=MINTER_ADDRESS)
+    ).execute(caller_address=MINTER_ADDRESS)
     await token_contract.permissionedBurn(
         account=initialized_account, amount=Uint256(BURN_AMOUNT).uint256()
-    ).invoke(caller_address=MINTER_ADDRESS)
+    ).execute(caller_address=MINTER_ADDRESS)
 
     assert_last_event(
         starknet=starknet,

@@ -3,13 +3,14 @@ import copy
 
 import pytest
 
-from starkware.starknet.std_contracts.upgradability_proxy.contracts import proxy_contract_class
-from starkware.starknet.std_contracts.upgradability_proxy.test_contracts import (
-    contract_a_class,
-    contract_b_class,
-    test_eic_class,
+from test.conftest import (
+    CAIRO_PATH,
+    CONTRACT_A_FILE,
+    CONTRACT_B_FILE,
+    CONTRACT_EIC_FILE,
+    PROXY_FILE,
 )
-from starkware.starknet.std_contracts.upgradability_proxy.test_utils import (
+from test.utils import (
     advance_time,
     assert_events_equal,
     create_event_object,
@@ -34,60 +35,66 @@ default_delay = 20
 NO_EIC = 0
 
 
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.get_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def gov() -> int:
     return 31415926535
 
 
-@pytest.fixture(scope="session")
-async def session_starknet() -> Starknet:
-    starknet = await Starknet.empty()
-    # We want to start with a non-zero block/time (this would fail tests).
-    advance_time(starknet=starknet, block_time_diff=1, block_num_diff=1)
-    return starknet
-
-
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def session_proxy_contract(session_starknet: Starknet) -> StarknetContract:
     return await session_starknet.deploy(
-        constructor_calldata=[default_delay], contract_class=proxy_contract_class
+        PROXY_FILE,
+        cairo_path=CAIRO_PATH,
+        constructor_calldata=[default_delay],
     )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def declared_contract_a(session_starknet: Starknet) -> DeclaredClass:
-    return await session_starknet.declare(contract_class=contract_a_class)
+    return await session_starknet.declare(
+        CONTRACT_A_FILE,
+        cairo_path=CAIRO_PATH,
+    )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def deployed_contract_a(session_starknet: Starknet) -> StarknetContract:
-    return await session_starknet.deploy(constructor_calldata=[], contract_class=contract_a_class)
+    return await session_starknet.deploy(
+        CONTRACT_A_FILE,
+        cairo_path=CAIRO_PATH,
+        constructor_calldata=[],
+    )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def declared_contract_b(session_starknet: Starknet) -> DeclaredClass:
-    return await session_starknet.declare(contract_class=contract_b_class)
+    return await session_starknet.declare(
+        CONTRACT_B_FILE,
+        cairo_path=CAIRO_PATH,
+    )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def deployed_contract_b(session_starknet: Starknet) -> StarknetContract:
-    return await session_starknet.deploy(constructor_calldata=[], contract_class=contract_b_class)
+    return await session_starknet.deploy(
+        CONTRACT_B_FILE,
+        cairo_path=CAIRO_PATH,
+        constructor_calldata=[],
+    )
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 async def declared_eic_impl(session_starknet: Starknet) -> DeclaredClass:
-    return await session_starknet.declare(contract_class=test_eic_class)
+    return await session_starknet.declare(
+        CONTRACT_EIC_FILE,
+        cairo_path=CAIRO_PATH,
+    )
 
 
 @pytest.fixture
-async def starknet(session_starknet: Starknet) -> Starknet:
+async def starknet(
+    session_starknet: Starknet,
+    ) -> Starknet:
     return copy.deepcopy(session_starknet)
 
 
@@ -95,25 +102,23 @@ async def starknet(session_starknet: Starknet) -> Starknet:
 async def proxy_contract(
     starknet: Starknet, session_proxy_contract: StarknetContract, gov: int
 ) -> StarknetContract:
-    assert proxy_contract_class.abi is not None
     proxy = StarknetContract(
         state=starknet.state,
-        abi=proxy_contract_class.abi,
+        abi=session_proxy_contract.abi,
         contract_address=session_proxy_contract.contract_address,
-        deploy_execution_info=session_proxy_contract.deploy_execution_info,
+        deploy_call_info=session_proxy_contract.deploy_call_info,
     )
-    await proxy.init_governance().invoke(caller_address=gov)
+    await proxy.init_governance().execute(caller_address=gov)
     return proxy
 
 
 @pytest.fixture
-async def wrapped_impl(starknet: Starknet, proxy_contract: StarknetContract) -> StarknetContract:
-    assert contract_a_class.abi is not None
+async def wrapped_impl(starknet: Starknet, declared_contract_a: DeclaredClass, proxy_contract: StarknetContract) -> StarknetContract:
     return StarknetContract(
         state=starknet.state,
-        abi=contract_a_class.abi,
+        abi=declared_contract_a.abi,
         contract_address=proxy_contract.contract_address,
-        deploy_execution_info=proxy_contract.deploy_execution_info,
+        deploy_call_info=proxy_contract.deploy_call_info,
     )
 
 
@@ -145,7 +150,7 @@ async def impl_standalone_test(
     execution_info = await contract.get_value().call()
     assert execution_info.result == (0,)
 
-    await contract.set_value(test_value).invoke()
+    await contract.set_value(test_value).execute()
     execution_info = await contract.get_value().call()
     assert execution_info.result == (test_value,)
 
@@ -163,11 +168,11 @@ async def test_initializable(deployed_contract_a: StarknetContract) -> None:
     # Try to init with a bad init data.
     # We expect to fail, and that the initialized flag remains clear.
     with pytest.raises(StarkException, match="ILLEGAL_INIT_SIZE"):
-        await deployed_contract_a.initialize([]).invoke()
+        await deployed_contract_a.initialize([]).execute()
     assert (await deployed_contract_a.initialized().call()).result[0] == 0
 
     # Initialize successfully.
-    await deployed_contract_a.initialize(init_vec).invoke()
+    await deployed_contract_a.initialize(init_vec).execute()
     # Initialized flag is now set.
     assert (await deployed_contract_a.initialized().call()).result[0] == 1
 
@@ -191,34 +196,34 @@ async def test_impl_wrapping(
     """
     await proxy_contract.add_implementation(
         declared_contract_a.class_hash, NO_EIC, [0], NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     # The concrete impl awaits 2 elements. not zero.
     with pytest.raises(StarkException, match="ILLEGAL_INIT_SIZE"):
         await proxy_contract.upgrade_to(
             declared_contract_a.class_hash, NO_EIC, [0], NOT_FINAL
-        ).invoke(caller_address=gov)
+        ).execute(caller_address=gov)
 
     await proxy_contract.add_implementation(
         declared_contract_a.class_hash, NO_EIC, [1, 2, 3], NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     # The concrete impl awaits 2 elements. not three.
     with pytest.raises(StarkException, match="ILLEGAL_INIT_SIZE"):
         await proxy_contract.upgrade_to(
             declared_contract_a.class_hash, NO_EIC, [1, 2, 3], NOT_FINAL
-        ).invoke(caller_address=gov)
+        ).execute(caller_address=gov)
 
     init_vec = [3, 4]
 
     # Set a first implementation on the proxy.
     await proxy_contract.add_implementation(
         declared_contract_a.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     await proxy_contract.upgrade_to(
         declared_contract_a.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     execution_info = await proxy_contract.implementation().call()
     assert execution_info.result == (declared_contract_a.class_hash,)
 
@@ -236,11 +241,11 @@ async def test_impl_wrapping(
     # Set a different implementation on the proxy.
     await proxy_contract.add_implementation(
         declared_contract_b.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     await proxy_contract.upgrade_to(
         declared_contract_b.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     execution_info = await proxy_contract.implementation().call()
     assert execution_info.result == (declared_contract_b.class_hash,)
 
@@ -260,8 +265,9 @@ async def test_block_init(proxy_contract, wrapped_impl) -> None:
     Test that one cannot call initialize() directly on the proxy, wrapped or unwrapped.
     """
     for _contract in locals().values():
+        print(_contract)
         with pytest.raises(StarkException, match="DIRECT_CALL_PROHIBITED"):
-            await _contract.initialize([0]).call()
+            await _contract.initialize([0]).execute()
 
 
 @pytest.mark.asyncio
@@ -284,8 +290,8 @@ async def test_state_retention(
 
     impl_a_test_value = 100000001
     impl_b_test_value = 100000002
-    await deployed_contract_a.set_value(impl_a_test_value).invoke()
-    await deployed_contract_b.set_value(impl_b_test_value).invoke()
+    await deployed_contract_a.set_value(impl_a_test_value).execute()
+    await deployed_contract_b.set_value(impl_b_test_value).execute()
     assert (await deployed_contract_a.get_value().call()).result[0] == impl_a_test_value
     assert (await deployed_contract_b.get_value().call()).result[0] == impl_b_test_value
 
@@ -294,11 +300,11 @@ async def test_state_retention(
     # Set first implementation on the proxy.
     await proxy_contract.add_implementation(
         declared_contract_a.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     await proxy_contract.upgrade_to(
         declared_contract_a.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     assert (await proxy_contract.implementation().call()).result[
         0
     ] == declared_contract_a.class_hash
@@ -308,17 +314,17 @@ async def test_state_retention(
 
     # Set and check a state change on the wrapped contract.
     test_value_1 = 200000001
-    await wrapped_impl.set_value(test_value_1).invoke()
+    await wrapped_impl.set_value(test_value_1).execute()
     assert (await wrapped_impl.get_value().call()).result[0] == test_value_1
 
     # Switch to second implementation.
     await proxy_contract.add_implementation(
         declared_contract_b.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     advance_time(starknet, default_delay)
     await proxy_contract.upgrade_to(
         declared_contract_b.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     assert (await proxy_contract.implementation().call()).result[
         0
     ] == declared_contract_b.class_hash
@@ -328,13 +334,13 @@ async def test_state_retention(
 
     # Alter the state on then wrapped contract.
     test_value_2 = 200000002
-    await wrapped_impl.set_value(test_value_2).invoke()
+    await wrapped_impl.set_value(test_value_2).execute()
     assert (await wrapped_impl.get_value().call()).result[0] == test_value_2
 
     # Switch back to the first implementation.
     await proxy_contract.upgrade_to(
         declared_contract_a.class_hash, NO_EIC, init_vec, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     assert (await proxy_contract.implementation().call()).result[
         0
     ] == declared_contract_a.class_hash
@@ -358,7 +364,7 @@ async def test_add_impl(starknet: Starknet, proxy_contract: StarknetContract, go
         await proxy_contract.add_implementation(impl, NO_EIC, init_vector, NOT_FINAL).call()
     exec_info = await proxy_contract.add_implementation(
         impl, NO_EIC, init_vector, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
 
     # Assert correct event emitted.
     impl_added_event_object = create_event_object(proxy_contract, IMPLEMENTATION_ADDED_EVENT)
@@ -377,7 +383,7 @@ async def test_add_impl(starknet: Starknet, proxy_contract: StarknetContract, go
 async def test_remove_impl(starknet: Starknet, proxy_contract: StarknetContract, gov: int):
     impl = 1970
     init_vector = [3, 14, 15927]
-    await proxy_contract.add_implementation(impl, NO_EIC, init_vector, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl, NO_EIC, init_vector, NOT_FINAL).execute(
         caller_address=gov
     )
     exec_info = await proxy_contract.implementation_time(
@@ -392,7 +398,7 @@ async def test_remove_impl(starknet: Starknet, proxy_contract: StarknetContract,
         await proxy_contract.remove_implementation(impl, NO_EIC, init_vector, NOT_FINAL).call()
     exec_info = await proxy_contract.remove_implementation(
         impl, NO_EIC, init_vector, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
 
     # Assert correct event emitted.
     impl_removed_event_object = create_event_object(proxy_contract, IMPLEMENTATION_REMOVED_EVENT)
@@ -430,10 +436,10 @@ async def test_eic_after_regular_wrap(
     impl2 = declared_contract_b.class_hash
 
     # Add implementation 1 & 2.
-    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
-    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -443,7 +449,7 @@ async def test_eic_after_regular_wrap(
 
     eic_hash = declared_eic_impl.class_hash
     eic_init_vector = [200]  # The test_eic increments the store_value by the passed value.
-    await proxy_contract.add_implementation(impl2, eic_hash, eic_init_vector, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl2, eic_hash, eic_init_vector, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -453,7 +459,7 @@ async def test_eic_after_regular_wrap(
             caller_address=gov
         )
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
-    await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -492,14 +498,14 @@ async def test_init_via_eic(
     # Set the first implementation via EIC.
     exec_info = await proxy_contract.add_implementation(
         impl1, eic_hash, eic_init_vector, NOT_FINAL
-    ).invoke(caller_address=gov)
+    ).execute(caller_address=gov)
     assert_events_equal(expected_event, exec_info.main_call_events[-1])
 
     impl_upgraded_event_object = create_event_object(proxy_contract, IMPLEMENTATION_UPGRADED_EVENT)
     expected_event = impl_upgraded_event_object(
         implementation_hash=impl1, eic_hash=eic_hash, init_vector=eic_init_vector
     )
-    exec_info = await proxy_contract.upgrade_to(impl1, eic_hash, eic_init_vector, NOT_FINAL).invoke(
+    exec_info = await proxy_contract.upgrade_to(impl1, eic_hash, eic_init_vector, NOT_FINAL).execute(
         caller_address=gov
     )
     assert_events_equal(expected_event, exec_info.main_call_events[-1])
@@ -513,7 +519,7 @@ async def test_init_via_eic(
 
     # Re-do upgrade_to. This will re-apply eic logic i.e. += 200.
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
-    exec_info = await proxy_contract.upgrade_to(impl1, eic_hash, eic_init_vector, NOT_FINAL).invoke(
+    exec_info = await proxy_contract.upgrade_to(impl1, eic_hash, eic_init_vector, NOT_FINAL).execute(
         caller_address=gov
     )
     assert_events_equal(expected_event, exec_info.main_call_events[-1])
@@ -543,21 +549,21 @@ async def test_eic_finalize(
     eic_hash = declared_eic_impl.class_hash
     eic_init_vector = [200]
 
-    await proxy_contract.add_implementation(impl1, eic_hash, [0], NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, eic_hash, [0], NOT_FINAL).execute(
         caller_address=gov
     )
-    await proxy_contract.upgrade_to(impl1, eic_hash, [0], NOT_FINAL).invoke(caller_address=gov)
+    await proxy_contract.upgrade_to(impl1, eic_hash, [0], NOT_FINAL).execute(caller_address=gov)
 
     assert (await wrapped_impl.get_value().call()).result[0] == 0
     assert (await proxy_contract.implementation().call()).result[0] == impl1
     assert (await wrapped_impl.initialized().call()).result[0] == True
 
     # Change impl using eic. This time finalizing.
-    await proxy_contract.add_implementation(impl2, eic_hash, eic_init_vector, FINAL).invoke(
+    await proxy_contract.add_implementation(impl2, eic_hash, eic_init_vector, FINAL).execute(
         caller_address=gov
     )
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
-    await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, FINAL).invoke(
+    await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, FINAL).execute(
         caller_address=gov
     )
 
@@ -571,7 +577,7 @@ async def test_eic_finalize(
     # EIC Path is blocked as well when finalized.
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
     with pytest.raises(StarkException, match="FINALIZED"):
-        await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, FINAL).invoke(
+        await proxy_contract.upgrade_to(impl2, eic_hash, eic_init_vector, FINAL).execute(
             caller_address=gov
         )
 
@@ -597,10 +603,10 @@ async def test_upgrade_to(
     init_vector2 = [6, 10]
 
     # Add implementation 1 & 2.
-    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
-    await proxy_contract.add_implementation(impl2, NO_EIC, init_vector2, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl2, NO_EIC, init_vector2, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -609,7 +615,7 @@ async def test_upgrade_to(
         await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).call()
 
     # Switch to initial impl (impl1) and assert its address.
-    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
     current_impl = (await proxy_contract.implementation().call()).result[0]
@@ -625,7 +631,7 @@ async def test_upgrade_to(
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
 
     # Switch to impl2 and assert impl address.
-    exec_info = await proxy_contract.upgrade_to(impl2, NO_EIC, init_vector2, NOT_FINAL).invoke(
+    exec_info = await proxy_contract.upgrade_to(impl2, NO_EIC, init_vector2, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -640,14 +646,14 @@ async def test_upgrade_to(
     assert current_impl == impl2
 
     # Revert immediately to impl1.
-    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
     current_impl = (await proxy_contract.implementation().call()).result[0]
     assert current_impl == impl1
 
     # Remove impl2 from the proxy.
-    await proxy_contract.remove_implementation(impl2, NO_EIC, init_vector2, NOT_FINAL).invoke(
+    await proxy_contract.remove_implementation(impl2, NO_EIC, init_vector2, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -683,9 +689,9 @@ async def test_impl_revert(
     impl2 = declared_contract_a.class_hash
 
     # Load implementations.
-    await proxy_contract.add_implementation(impl1, NO_EIC, [], NOT_FINAL).invoke(caller_address=gov)
-    await proxy_contract.add_implementation(impl2, NO_EIC, [], NOT_FINAL).invoke(caller_address=gov)
-    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, NO_EIC, [], NOT_FINAL).execute(caller_address=gov)
+    await proxy_contract.add_implementation(impl2, NO_EIC, [], NOT_FINAL).execute(caller_address=gov)
+    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -694,7 +700,7 @@ async def test_impl_revert(
         await proxy_contract.upgrade_to(impl1, NO_EIC, [], NOT_FINAL).call(caller_address=gov)
 
     # Switch to initial impl (impl1) and assert its address.
-    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
     current_impl = (await proxy_contract.implementation().call()).result[0]
@@ -705,7 +711,7 @@ async def test_impl_revert(
 
     # Set stored_value to a test value.
     test_value = 100000001
-    await wrapped_impl.set_value(test_value).invoke()
+    await wrapped_impl.set_value(test_value).execute()
     assert (await wrapped_impl.get_value().call()).result[0] == test_value
 
     # Advance the starknet blockinfo, to allow switches.
@@ -715,7 +721,7 @@ async def test_impl_revert(
     implementations = [(impl1, init_vector1), (impl2, []), (impl1, [])]
     for i in range(1, 5):
         impl, init_vec = implementations[i % len(implementations)]
-        await proxy_contract.upgrade_to(impl, NO_EIC, init_vec, NOT_FINAL).invoke(
+        await proxy_contract.upgrade_to(impl, NO_EIC, init_vec, NOT_FINAL).execute(
             caller_address=gov
         )
         assert (await wrapped_impl.get_value().call()).result[0] == test_value
@@ -745,7 +751,7 @@ async def test_upgrade_finalization(
     init_vector1 = [5, 6]
 
     # Add_implementation with the first implementations.
-    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
 
@@ -754,12 +760,12 @@ async def test_upgrade_finalization(
 
     # Final flag part of the implementation_time key.
     with pytest.raises(StarkException, match="UNKNOWN_IMPLEMENTATION"):
-        await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, FINAL).invoke(
+        await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, FINAL).execute(
             caller_address=gov
         )
 
     # Successfully upgrade_to the first implementations.
-    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.upgrade_to(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
     current_impl = (await proxy_contract.implementation().call()).result[0]
@@ -769,8 +775,8 @@ async def test_upgrade_finalization(
     assert (await proxy_contract.finalized().call()).result[0] == False
 
     # Add additional implementations.
-    await proxy_contract.add_implementation(impl1, NO_EIC, [], NOT_FINAL).invoke(caller_address=gov)
-    await proxy_contract.add_implementation(impl1, NO_EIC, [], FINAL).invoke(caller_address=gov)
+    await proxy_contract.add_implementation(impl1, NO_EIC, [], NOT_FINAL).execute(caller_address=gov)
+    await proxy_contract.add_implementation(impl1, NO_EIC, [], FINAL).execute(caller_address=gov)
     advance_time(starknet=starknet, block_time_diff=default_delay, block_num_diff=1)
 
     # Switch to another non-final impl. Assert that upgraded event emitted, but finalized is not.
@@ -781,13 +787,13 @@ async def test_upgrade_finalization(
     expected_event = upgraded_event_object(
         implementation_hash=impl1, eic_hash=NO_EIC, init_vector=[]
     )
-    exec_info = await proxy_contract.upgrade_to(impl1, NO_EIC, [], NOT_FINAL).invoke(
+    exec_info = await proxy_contract.upgrade_to(impl1, NO_EIC, [], NOT_FINAL).execute(
         caller_address=gov
     )
     assert_events_equal(expected_event, exec_info.main_call_events[-1])
 
     # Switch to a final impl. Assert that both upgraded and finalized events are emitted.
-    exec_info = await proxy_contract.upgrade_to(impl1, NO_EIC, [], FINAL).invoke(caller_address=gov)
+    exec_info = await proxy_contract.upgrade_to(impl1, NO_EIC, [], FINAL).execute(caller_address=gov)
 
     expected_upgrade_event = upgraded_event_object(
         implementation_hash=impl1, eic_hash=NO_EIC, init_vector=[]
@@ -822,7 +828,7 @@ async def test_key_add_impl(
     init_vector1 = [5, 6]
 
     # Add implementation 1.
-    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).invoke(
+    await proxy_contract.add_implementation(impl1, NO_EIC, init_vector1, NOT_FINAL).execute(
         caller_address=gov
     )
 

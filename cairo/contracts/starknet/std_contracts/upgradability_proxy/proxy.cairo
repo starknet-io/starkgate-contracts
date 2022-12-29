@@ -15,6 +15,8 @@ from starknet.std_contracts.upgradability_proxy.governance import (
 from starknet.std_contracts.upgradability_proxy.proxy_impl import (
     add_implementation,
     implementation,
+    implementation_time,
+    initialize,
     remove_implementation,
     upgrade_delay,
     upgrade_to,

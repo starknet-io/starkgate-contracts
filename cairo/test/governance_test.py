@@ -3,8 +3,8 @@ import copy
 
 import pytest
 
-from starkware.starknet.std_contracts.upgradability_proxy.contracts import governance_contract_class
-from starkware.starknet.std_contracts.upgradability_proxy.test_utils import (
+from test.conftest import CAIRO_PATH, GOVERNANCE_FILE
+from test.utils import (
     assert_events_equal,
     create_event_object,
 )
@@ -33,7 +33,9 @@ async def session_starknet() -> Starknet:
 @pytest.fixture(scope="session")
 async def session_gov_contract(session_starknet: Starknet) -> StarknetContract:
     return await session_starknet.deploy(
-        constructor_calldata=[], contract_class=governance_contract_class
+        GOVERNANCE_FILE,
+        cairo_path=CAIRO_PATH,
+        constructor_calldata=[],
     )
 
 
@@ -46,12 +48,11 @@ async def starknet(session_starknet: Starknet) -> Starknet:
 async def governance_contract(
     starknet: Starknet, session_gov_contract: StarknetContract
 ) -> StarknetContract:
-    assert governance_contract_class.abi is not None
     return StarknetContract(
         state=starknet.state,
-        abi=governance_contract_class.abi,
+        abi=session_gov_contract.abi,
         contract_address=session_gov_contract.contract_address,
-        deploy_execution_info=session_gov_contract.deploy_execution_info,
+        deploy_call_info=session_gov_contract.deploy_call_info,
     )
 
 
@@ -61,7 +62,7 @@ async def test_governance_init(governance_contract: StarknetContract):
     execution_info = await governance_contract.is_governor(GOV).call()
     assert execution_info.result == (0,)
 
-    execution_info = await governance_contract.init_governance().invoke(caller_address=GOV)
+    execution_info = await governance_contract.init_governance().execute(caller_address=GOV)
     nominated_event_object = create_event_object(governance_contract, GOVERNOR_NOMINATED_EVENT)
     expected_nomination_event = nominated_event_object(new_governor_nominee=GOV, nominated_by=GOV)
 
@@ -86,7 +87,7 @@ async def test_multi_nominate_accept(governance_contract: StarknetContract):
     # Only governor can nominate.
     with pytest.raises(StarkException, match="ONLY_GOVERNOR"):
         await governance_contract.nominate_new_governor(142).call(caller_address=INIT_GOV)
-    await governance_contract.init_governance().invoke(caller_address=INIT_GOV)
+    await governance_contract.init_governance().execute(caller_address=INIT_GOV)
 
     nominees = list(range(43, 47))
     for nom in nominees:
@@ -97,7 +98,7 @@ async def test_multi_nominate_accept(governance_contract: StarknetContract):
     nominated_event_object = create_event_object(governance_contract, GOVERNOR_NOMINATED_EVENT)
     for nom in reversed(nominees):
         expected_event = nominated_event_object(new_governor_nominee=nom, nominated_by=INIT_GOV)
-        exec_info = await governance_contract.nominate_new_governor(nom).invoke(
+        exec_info = await governance_contract.nominate_new_governor(nom).execute(
             caller_address=INIT_GOV
         )
 
@@ -106,7 +107,7 @@ async def test_multi_nominate_accept(governance_contract: StarknetContract):
 
     accepted_event_object = create_event_object(governance_contract, GOVERNANCE_ACCEPTED_EVENT)
     for nom in nominees:
-        exec_info = await governance_contract.accept_governance().invoke(caller_address=nom)
+        exec_info = await governance_contract.accept_governance().execute(caller_address=nom)
 
         # Proper event emitted on acceptance.
         assert_events_equal(accepted_event_object(new_governor=nom), exec_info.main_call_events[-1])
@@ -124,28 +125,28 @@ async def test_cancel_nomination(governance_contract: StarknetContract):
 
     with pytest.raises(StarkException, match="ONLY_GOVERNOR"):
         await governance_contract.cancel_nomination(nominee_1).call(caller_address=INIT_GOV)
-    await governance_contract.init_governance().invoke(caller_address=INIT_GOV)
+    await governance_contract.init_governance().execute(caller_address=INIT_GOV)
 
     # Cancel nomination succeeds quietly even if not nominee not nominated before.
-    ex_info = await governance_contract.cancel_nomination(nominee_1).invoke(caller_address=INIT_GOV)
+    ex_info = await governance_contract.cancel_nomination(nominee_1).execute(caller_address=INIT_GOV)
 
     # No events emitted on void cancellation.
     assert [] == ex_info.main_call_events
 
     # Nominate nominees 1 & 2.
-    await governance_contract.nominate_new_governor(nominee_1).invoke(caller_address=INIT_GOV)
-    await governance_contract.nominate_new_governor(nominee_2).invoke(caller_address=INIT_GOV)
+    await governance_contract.nominate_new_governor(nominee_1).execute(caller_address=INIT_GOV)
+    await governance_contract.nominate_new_governor(nominee_2).execute(caller_address=INIT_GOV)
 
     # Cancel nominee 1.
     cancel_event_object = create_event_object(governance_contract, NOMINATION_CANCELLED_EVENT)
     expected_event = cancel_event_object(cancelled_nominee=nominee_1, cancelled_by=INIT_GOV)
-    ex_info = await governance_contract.cancel_nomination(nominee_1).invoke(caller_address=INIT_GOV)
+    ex_info = await governance_contract.cancel_nomination(nominee_1).execute(caller_address=INIT_GOV)
 
     # Proper event emitted on cancellation.
     assert_events_equal(expected_event, ex_info.main_call_events[-1])
 
     # Nominee 2 can accept.
-    await governance_contract.accept_governance().invoke(caller_address=nominee_2)
+    await governance_contract.accept_governance().execute(caller_address=nominee_2)
     ex_info = await governance_contract.is_governor(nominee_2).call()
     assert ex_info.result == (1,)
 
@@ -161,17 +162,17 @@ async def test_accept_nomination(governance_contract: StarknetContract):
     INIT_GOV = 42
     nominee = 43
 
-    await governance_contract.init_governance().invoke(caller_address=INIT_GOV)
+    await governance_contract.init_governance().execute(caller_address=INIT_GOV)
 
     # Cannot accept before nomination.
     with pytest.raises(StarkException, match="NOT_A_GOVERNANCE_CANDIDATE"):
         await governance_contract.accept_governance().call(caller_address=nominee)
 
     # Nominate nominees.
-    await governance_contract.nominate_new_governor(nominee).invoke(caller_address=INIT_GOV)
+    await governance_contract.nominate_new_governor(nominee).execute(caller_address=INIT_GOV)
 
     # Accept nomination successfully.
-    await governance_contract.accept_governance().invoke(caller_address=nominee)
+    await governance_contract.accept_governance().execute(caller_address=nominee)
     execution_info = await governance_contract.is_governor(nominee).call()
     assert execution_info.result == (1,)
 
@@ -189,7 +190,7 @@ async def test_remove_governor(governance_contract: StarknetContract):
     INIT_GOV = 42
     nominee = 43
 
-    await governance_contract.init_governance().invoke(caller_address=INIT_GOV)
+    await governance_contract.init_governance().execute(caller_address=INIT_GOV)
     exec_info = await governance_contract.is_governor(INIT_GOV).call()
     assert exec_info.result == (1,)
 
@@ -202,12 +203,12 @@ async def test_remove_governor(governance_contract: StarknetContract):
         await governance_contract.remove_governor(INIT_GOV).call(caller_address=INIT_GOV)
 
     # Nominate nominees & Accept governance.
-    await governance_contract.nominate_new_governor(nominee).invoke(caller_address=INIT_GOV)
-    await governance_contract.accept_governance().invoke(caller_address=nominee)
+    await governance_contract.nominate_new_governor(nominee).execute(caller_address=INIT_GOV)
+    await governance_contract.accept_governance().execute(caller_address=nominee)
 
     removed_event_object = create_event_object(governance_contract, GOVERNOR_REMOVED_EVENT)
     expected_event = removed_event_object(removed_governor=INIT_GOV, removed_by=nominee)
-    exec_info = await governance_contract.remove_governor(INIT_GOV).invoke(caller_address=nominee)
+    exec_info = await governance_contract.remove_governor(INIT_GOV).execute(caller_address=nominee)
 
     # Proper event emitted on removal.
     assert_events_equal(expected_event, exec_info.main_call_events[-1])
@@ -225,8 +226,8 @@ async def test_zero_governor_address(governance_contract: StarknetContract):
     GD_GOV = 4006
 
     with pytest.raises(StarkException, match="ZERO_ADDRESS"):
-        await governance_contract.init_governance().invoke(caller_address=ZERO_GOV)
+        await governance_contract.init_governance().execute(caller_address=ZERO_GOV)
 
-    await governance_contract.init_governance().invoke(caller_address=GD_GOV)
+    await governance_contract.init_governance().execute(caller_address=GD_GOV)
     with pytest.raises(StarkException, match="ZERO_ADDRESS"):
-        await governance_contract.nominate_new_governor(ZERO_GOV).invoke(caller_address=GD_GOV)
+        await governance_contract.nominate_new_governor(ZERO_GOV).execute(caller_address=GD_GOV)
