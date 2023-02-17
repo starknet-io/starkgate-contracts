@@ -1,0 +1,49 @@
+name: Fund PSN user trough L1 ERC20 Token Bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      l2_address:
+        description: 'PSN address of the account to transfer to(0x23213123....)'
+        required: true
+        type: string
+      amount:
+        description: 'Amount to transfer in whole tokens(100 USDC for example)'
+        required: true
+        type: string
+
+env:
+  PYTHON_VERSION: "3.9"
+  PARACLEAR_L1_ADMIN_PRIVATE_KEY: ${{ secrets.PARACLEAR_L1_ADMIN_KEY }}
+  PARACLEAR_L1_BRIDGE_ADDRESS: "0xBC5BF8f315B9D1Eebd8062CAdf113A05c5abB43E"
+  PARACLEAR_L1_TOKEN_ADDRESS: "0x66aee3c05916df7361197c0ffed6a0fdeb0b2b09b3a9bab48ac19505b82fcd"
+  WEB3_INFURA_PROJECT_ID: ${{ secrets.PARACLEAR_L1_BRIDGE_INFURA_API_KEY }}
+  AMOUNT: ${{ github.event.inputs.amount }}
+  PARACLEAR_L2_USER_ADDRESS: ${{ github.event.inputs.l2_address }}
+
+
+jobs:
+  fake-usdc-transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Print the input tag to STDOUT
+        run: echo  Transferring ${{ inputs.amount }} USDC to L2 Address ${{ inputs.l2_address }}
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: solidity/requirements.txt
+      - name: Install dependencies
+        run: |
+          python3 -m venv dev
+          source dev/bin/activate
+          pip install -r requirements.txt
+        working-directory: solidity/
+      - name: Transfer
+        run: |
+          source dev/bin/activate
+          brownie compile --all
+          brownie run scripts/fund_user.py --network goerli
+        working-directory: solidity/
