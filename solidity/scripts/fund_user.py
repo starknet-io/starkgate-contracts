@@ -30,7 +30,7 @@ def main():
 
     # <amount> USDC with 6 decimals
     amount = int(AMOUNT) * 10 ** 6
-    usdc.mint(L2_USER_ADDRESS, amount, from_admin_account)
+    usdc.mint(admin_account, amount, from_admin_account)
     usdc.approve(bridge, amount, from_admin_account)
 
     bridge.deposit(amount, L2_USER_ADDRESS, from_admin_account)

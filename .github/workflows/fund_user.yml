@@ -16,7 +16,7 @@ env:
   PYTHON_VERSION: "3.9"
   PARACLEAR_L1_ADMIN_PRIVATE_KEY: ${{ secrets.PARACLEAR_L1_ADMIN_KEY }}
   PARACLEAR_L1_BRIDGE_ADDRESS: "0xBC5BF8f315B9D1Eebd8062CAdf113A05c5abB43E"
-  PARACLEAR_L1_TOKEN_ADDRESS: "0x66aee3c05916df7361197c0ffed6a0fdeb0b2b09b3a9bab48ac19505b82fcd"
+  PARACLEAR_L1_TOKEN_ADDRESS: "0x0d4ED9d0E0Ca8bF6f640256B298a2690DEC5f3cC"
   WEB3_INFURA_PROJECT_ID: ${{ secrets.PARACLEAR_L1_BRIDGE_INFURA_API_KEY }}
   AMOUNT: ${{ github.event.inputs.amount }}
   PARACLEAR_L2_USER_ADDRESS: ${{ github.event.inputs.l2_address }}
@@ -40,6 +40,7 @@ jobs:
           python3 -m venv dev
           source dev/bin/activate
           pip install -r requirements.txt
+          brownie pm install OpenZeppelin/openzeppelin-contracts@4.8.0
         working-directory: solidity/
       - name: Transfer
         run: |
