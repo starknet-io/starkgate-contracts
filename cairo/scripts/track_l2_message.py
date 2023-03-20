@@ -1,8 +1,8 @@
 from starkware.cairo.common.hash_state import compute_hash_on_elements
 from starkware.crypto.signature.fast_pedersen_hash import pedersen_hash
 from typing import List
-from deploy_lib import int_16, CustomStarknetChainId
-
+from deploy_lib import CustomStarknetChainId
+from utils import int_16
 
 def calculate_transaction_hash_common(
     tx_hash_prefix,

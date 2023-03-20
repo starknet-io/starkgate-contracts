@@ -24,6 +24,10 @@ You may need to restart your terminal after installing pipx.
 pipx install eth-brownie
 ```
 
+```bash
+brownie pm install OpenZeppelin/openzeppelin-contracts@4.8.0
+```
+
 ### Compiling contracts
 
 ```bash
@@ -39,7 +43,6 @@ Each script has a set of environment variables required in order to run.
 export WEB3_INFURA_PROJECT_ID=<infura_bridge_project_id>
 brownie run scripts/<script_file> --network goerli
 ```
-
 
 Mint to an account
 

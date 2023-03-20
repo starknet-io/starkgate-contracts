@@ -2,13 +2,13 @@ import asyncio
 import os
 
 from starknet_py.contract import Contract
-from starknet_py.transactions.declare import make_declare_tx
 from deploy_lib import (
     CustomStarknetChainId,
     get_account_client,
     get_psn_network,
-    int_16,
 )
+from proxy_config import get_proxy_config
+from utils import int_16
 
 ADMIN_ACCOUNT_ADDRESS = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_ADDRESS")
 ADMIN_ACCOUNT_KEY = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_KEY")
@@ -23,17 +23,12 @@ async def validate():
         ADMIN_ACCOUNT_ADDRESS,
         ADMIN_ACCOUNT_KEY,
     )
-    contract_declare_tx = make_declare_tx(
-        compilation_source=["contracts/starknet/std_contracts/ERC20/ERC20.cairo"],
-        cairo_path=['contracts/'],
-    )
-    contract_abi = contract_declare_tx.contract_class.abi
-    usdc = Contract(
+    usdc_proxy = await Contract.from_address(
         address=L2_TOKEN_ADDRESS,
-        abi=contract_abi,
         client=admin_account_client,
+        proxy_config=get_proxy_config(),
     )
-    balance_of_invoke = await usdc.functions['balanceOf'].call(
+    balance_of_invoke = await usdc_proxy.functions['balanceOf'].call(
         int_16(L2_USER_ADDRESS),
     )
     print("balance ", balance_of_invoke, "account ", L2_USER_ADDRESS)

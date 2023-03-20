@@ -8,8 +8,8 @@ from deploy_lib import (
     deploy_with_proxy,
     get_account_client,
     get_psn_network,
-    int_16,
 )
+from utils import int_16
 
 ADMIN_ACCOUNT_ADDRESS = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_ADDRESS")
 ADMIN_ACCOUNT_KEY = os.environ.get("PARACLEAR_PSN_ADMIN_ACCOUNT_KEY")
@@ -23,18 +23,17 @@ async def deploy():
         ADMIN_ACCOUNT_ADDRESS,
         ADMIN_ACCOUNT_KEY,
     )
-    initialize_data = [
-        encode_shortstring('USDC'),
-        encode_shortstring('USDC'),
+    init_vector = [
+        encode_shortstring("USDC"),
+        encode_shortstring("USDC"),
         6,
         int_16(L2_BRIDGE_ADDRESS),
     ]
     usdc_proxy = await deploy_with_proxy(
-        'starknet/std_contracts/ERC20/ERC20.cairo',
+        "ERC20",
         admin_account_client,
-        initialize_data,
+        init_vector,
     )
-
     print("USDC contract:", hex(usdc_proxy.address))
 
 
