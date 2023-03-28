@@ -37,6 +37,7 @@ full_python_test(starkgate_flow_test
     starkgate_cairo_contracts_lib
     starkgate_conftest_lib
     starknet_proxy_contract_lib
+    starknet_test_utils
     starknet_upgradability_test_utils_lib
     ${STARKGATE_ETH_ADDITIONAL_LIBS}
     ${STARKGATE_CAIRO_ADDITIONAL_LIBS}
@@ -84,7 +85,7 @@ add_custom_command(
     COMMAND ${CMAKE_CURRENT_BINARY_DIR}/copy_starkgate_artifacts
         --solidity_bridge_artifacts_dir ${SOLIDITY_BRIDGE_ARTIFACTS_BUILD_DIR}
         --cairo_bridge_artifacts_dir ${CAIRO_BRIDGE_ARTIFACTS_BUILD_DIR}
-        --cairo_erc20_artifacts_dir ${CAIRO_ERC20_ARTIFACTS_BUILD_DIR} 
+        --cairo_erc20_artifacts_dir ${CAIRO_ERC20_ARTIFACTS_BUILD_DIR}
         --output_dir ${ARTIFACTS_DIR}
     COMMAND touch ${ARTIFACTS_STAMP}
     DEPENDS copy_starkgate_artifacts ${CMAKE_CURRENT_BINARY_DIR}/copy_starkgate_artifacts

@@ -9,10 +9,9 @@ python_lib(proxy_contract_sol
     LIBS
     common_library_sol
     governance_contract_sol
-    solidity_contracts_interfaces_sol
 )
 
-solidity_env(proxy_contract_sol_env
+solidity_env(proxy_contract
     CONTRACTS
     Proxy
 
@@ -31,4 +30,4 @@ python_lib(proxy_contract_lib
     ARTIFACTS
     "${CMAKE_CURRENT_BINARY_DIR}/Proxy.json Proxy.json"
 )
-add_dependencies(proxy_contract_lib proxy_contract_sol_env)
+add_dependencies(proxy_contract_lib proxy_contract)

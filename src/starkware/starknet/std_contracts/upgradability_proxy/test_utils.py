@@ -1,4 +1,4 @@
-from starkware.starknet.business_logic.state.state import BlockInfo
+from starkware.starknet.business_logic.state.state_api_objects import BlockInfo
 from starkware.starknet.testing.contract import StarknetContract
 from starkware.starknet.testing.contract_utils import EventIdentifier
 from starkware.starknet.testing.starknet import Starknet

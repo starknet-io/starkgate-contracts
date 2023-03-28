@@ -22,7 +22,7 @@ abstract contract ContractInitializer {
     /*
       Validates the init data that is passed into the proxied contract.
     */
-    function validateInitData(bytes calldata data) internal pure virtual;
+    function validateInitData(bytes calldata data) internal view virtual;
 
     /*
       For a proxied contract that consists of sub-contracts, this function processes

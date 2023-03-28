@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/starkware/solidity/libraries/Addresses.sol";
-import "contracts/starkware/starknet/apps/starkgate/eth/StarknetEthBridge.sol";
-import "contracts/starkware/starknet/solidity/IStarknetMessaging.sol";
+import "starkware/solidity/libraries/Addresses.sol";
+import "starkware/starknet/apps/starkgate/eth/StarknetEthBridge.sol";
+import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
 contract StarknetEthBridgeTester is StarknetEthBridge {
     using Addresses for address;

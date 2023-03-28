@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/starkware/solidity/interfaces/MGovernance.sol";
-import "contracts/starkware/solidity/libraries/NamedStorage.sol";
+import "starkware/solidity/interfaces/MGovernance.sol";
+import "starkware/solidity/libraries/NamedStorage.sol";
 
 /**
   A Governor controlled finalizable contract.

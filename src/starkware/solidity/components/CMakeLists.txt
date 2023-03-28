@@ -3,8 +3,11 @@ python_lib(solidity_contracts_components_sol
     FILES
     FactRegistry.sol
     GovernedFinalizable.sol
+    OnchainDataFactTreeEncoder.sol
 
     LIBS
+    governance_interface_sol
+    named_storage_sol
     solidity_contracts_interfaces_sol
 )
 

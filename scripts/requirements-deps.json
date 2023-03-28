@@ -191,9 +191,9 @@
                 "required_version": "==1.2"
             },
             {
-                "installed_version": "0.12.0",
-                "key": "lark-parser",
-                "package_name": "lark-parser",
+                "installed_version": "1.1.2",
+                "key": "lark",
+                "package_name": "lark",
                 "required_version": null
             },
             {
@@ -276,7 +276,7 @@
             }
         ],
         "package": {
-            "installed_version": "0.9.0",
+            "installed_version": "0.0.0+local",
             "key": "cairo-lang",
             "package_name": "cairo-lang"
         }
@@ -675,9 +675,9 @@
     {
         "dependencies": [],
         "package": {
-            "installed_version": "0.12.0",
-            "key": "lark-parser",
-            "package_name": "lark-parser"
+            "installed_version": "1.1.2",
+            "key": "lark",
+            "package_name": "lark"
         }
     },
     {

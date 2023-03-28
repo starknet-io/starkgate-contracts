@@ -3,7 +3,7 @@ python_lib(starkgate_bridge_sol
     FILES
     StarknetERC20Bridge.sol
     StarknetEthBridge.sol
-    StarknetBridgeConstatns.sol
+    StarknetBridgeConstants.sol
     StarknetTokenBridge.sol
     StarknetTokenStorage.sol
     Transfers.sol

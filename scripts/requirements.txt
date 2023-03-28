@@ -8,7 +8,7 @@ attrs==21.4.0
 base58==2.1.1
 bitarray==1.2.2
 cachetools==5.0.0
-cairo-lang==0.9.0
+cairo-lang==0.0.0+local
 certifi==2021.10.8
 charset-normalizer==2.0.12
 coverage==4.5.4
@@ -31,7 +31,7 @@ importlib-metadata==4.11.1
 iniconfig==1.1.1
 ipfshttpclient==0.8.0a2
 jsonschema==3.2.0
-lark-parser==0.12.0
+lark==1.1.2
 lru-dict==1.1.7
 marshmallow==3.14.1
 marshmallow-dataclass==8.5.3

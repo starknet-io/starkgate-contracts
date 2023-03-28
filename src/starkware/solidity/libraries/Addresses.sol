@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
-import "../interfaces/Identity.sol";
 
 /*
-  Common Utility librarries.
+  Common Utility Libraries.
   I. Addresses (extending address).
 */
 library Addresses {
@@ -39,18 +38,5 @@ library Addresses {
         if (returndata.length > 0) {
             require(abi.decode(returndata, (bool)), "TOKEN_OPERATION_FAILED");
         }
-    }
-
-    /*
-      Validates that the passed contract address is of a real contract,
-      and that its id hash (as infered fromn identify()) matched the expected one.
-    */
-    function validateContractId(address contractAddress, bytes32 expectedIdHash) internal view {
-        require(isContract(contractAddress), "ADDRESS_NOT_CONTRACT");
-        string memory actualContractId = Identity(contractAddress).identify();
-        require(
-            keccak256(abi.encodePacked(actualContractId)) == expectedIdHash,
-            "UNEXPECTED_CONTRACT_IDENTIFIER"
-        );
     }
 }

@@ -20,4 +20,9 @@ python_lib(solidity_contract_initializer_sol
     ExternalInitializer.sol
     ContractInitializer.sol
     ProxySupport.sol
+
+    LIBS
+    common_library_sol
+    governance_contract_sol
+    solidity_contracts_interfaces_sol
 )

@@ -39,13 +39,9 @@ abstract contract Governance is MGovernance {
     function initGovernance() internal {
         GovernanceInfoStruct storage gub = getGovernanceInfo();
         require(!gub.initialized, "ALREADY_INITIALIZED");
-        gub.initialized = true; // to ensure addGovernor() won't fail.
+        gub.initialized = true; // to ensure acceptNewGovernor() won't fail.
         // Add the initial governer.
-        addGovernor(msg.sender);
-
-        // Emit governance information.
-        emit LogNominatedGovernor(msg.sender);
-        emit LogNewGovernorAccepted(msg.sender);
+        acceptNewGovernor(msg.sender);
     }
 
     function _isGovernor(address user) internal view override returns (bool) {
@@ -74,16 +70,19 @@ abstract contract Governance is MGovernance {
     }
 
     /*
-      The addGovernor is called in two cases:
+      The acceptNewGovernor is called in two cases:
       1. by _acceptGovernance when a new governor accepts its role.
       2. by initGovernance to add the initial governor.
       The difference is that the init path skips the nominate step
       that would fail because of the onlyGovernance modifier.
     */
-    function addGovernor(address newGovernor) private {
+    function acceptNewGovernor(address newGovernor) private {
         require(!_isGovernor(newGovernor), "ALREADY_GOVERNOR");
         GovernanceInfoStruct storage gub = getGovernanceInfo();
         gub.effectiveGovernors[newGovernor] = true;
+
+        // Emit governance information.
+        emit LogNewGovernorAccepted(newGovernor);
     }
 
     function _acceptGovernance() internal {
@@ -92,11 +91,8 @@ abstract contract Governance is MGovernance {
         require(msg.sender == gub.candidateGovernor, "ONLY_CANDIDATE_GOVERNOR");
 
         // Update state.
-        addGovernor(gub.candidateGovernor);
+        acceptNewGovernor(gub.candidateGovernor);
         gub.candidateGovernor = address(0x0);
-
-        // Send a notification about the change of governor.
-        emit LogNewGovernorAccepted(msg.sender);
     }
 
     /*
