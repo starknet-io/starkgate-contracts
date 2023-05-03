@@ -36,4 +36,5 @@ def main():
     usdc.mint(L2_USER_ADDRESS, amount, from_admin_account)
     usdc.approve(bridge, amount, from_user_account)
 
-    bridge.deposit(amount, L2_USER_ADDRESS, from_user_account)
+    msg_fee = 1_000_000_000 # 1 Gwei
+    bridge.deposit(amount, L2_USER_ADDRESS, {"from": user_account, "amount": msg_fee})
