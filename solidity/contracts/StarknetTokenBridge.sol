@@ -149,7 +149,7 @@ abstract contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 fee
-    ) internal onlyActive {
+    ) internal {
         require(amount > 0, "ZERO_DEPOSIT");
         require(msg.value >= fee, "INSUFFICIENT_MSG_VALUE");
         require(isValidL2Address(l2Recipient), "L2_ADDRESS_OUT_OF_RANGE");
@@ -165,7 +165,7 @@ abstract contract StarknetTokenBridge is
         emit LogDeposit(msg.sender, amount, l2Recipient, nonce, fee);
     }
 
-    function consumeMessage(uint256 amount, address recipient) internal onlyActive {
+    function consumeMessage(uint256 amount, address recipient) internal {
         uint256[] memory payload = new uint256[](4);
         payload[0] = TRANSFER_FROM_STARKNET;
         payload[1] = uint256(recipient);
@@ -208,7 +208,7 @@ abstract contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyActive onlyDepositor(nonce) {
+    ) external onlyDepositor(nonce) {
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
             DEPOSIT_SELECTOR,
@@ -225,7 +225,7 @@ abstract contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyActive onlyDepositor(nonce) {
+    ) external onlyDepositor(nonce) {
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
             DEPOSIT_SELECTOR,
