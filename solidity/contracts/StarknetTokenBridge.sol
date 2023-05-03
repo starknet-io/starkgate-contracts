@@ -12,11 +12,17 @@ import "contracts/messaging/IStarknetMessaging.sol";
 abstract contract StarknetTokenBridge is
     Identity,
     StarknetTokenStorage,
-    StarknetBridgeConstatns,
+    StarknetBridgeConstants,
     GenericGovernance,
     ProxySupport
 {
-    event LogDeposit(address indexed sender, uint256 amount, uint256 indexed l2Recipient);
+    event LogDeposit(
+        address indexed sender,
+        uint256 amount,
+        uint256 indexed l2Recipient,
+        uint256 nonce,
+        uint256 fee
+    );
     event LogDepositCancelRequest(
         address indexed sender,
         uint256 amount,
@@ -33,8 +39,9 @@ abstract contract StarknetTokenBridge is
     event LogSetL2TokenBridge(uint256 value);
     event LogSetMaxTotalBalance(uint256 value);
     event LogSetMaxDeposit(uint256 value);
+    event LogBridgeActivated();
 
-    function withdraw(uint256 amount, address recipient) public virtual;
+    function deposit(uint256 amount, uint256 l2Recipient) external payable virtual;
 
     function transferOutFunds(uint256 amount, address recipient) internal virtual;
 
@@ -43,16 +50,30 @@ abstract contract StarknetTokenBridge is
     */
     constructor() internal GenericGovernance(GOVERNANCE_TAG) {}
 
+    function isTokenContractRequired() internal pure virtual returns (bool) {
+        return true;
+    }
+
     function isInitialized() internal view override returns (bool) {
-        return messagingContract() != IStarknetMessaging(0);
+        if (!isTokenContractRequired()) {
+            return (messagingContract() != IStarknetMessaging(0));
+        }
+        return (messagingContract() != IStarknetMessaging(0)) && (bridgedToken() != address(0));
     }
 
     function numOfSubContracts() internal pure override returns (uint256) {
         return 0;
     }
 
-    function validateInitData(bytes calldata data) internal pure override {
+    function validateInitData(bytes calldata data) internal view virtual override {
         require(data.length == 64, "ILLEGAL_DATA_SIZE");
+        (address bridgedToken_, address messagingContract_) = abi.decode(data, (address, address));
+        if (isTokenContractRequired()) {
+            require(bridgedToken_.isContract(), "INVALID_BRIDGE_TOKEN_ADDRESS");
+        } else {
+            require(bridgedToken_ == address(0), "NON_ZERO_TOKEN_ADDRESS_PROVIDED");
+        }
+        require(messagingContract_.isContract(), "INVALID_MESSAGING_CONTRACT_ADDRESS");
     }
 
     /*
@@ -65,22 +86,17 @@ abstract contract StarknetTokenBridge is
       and sets the storage slot accordingly.
     */
     function initializeContractState(bytes calldata data) internal override {
-        (address bridgedToken_, IStarknetMessaging messagingContract_) = abi.decode(
-            data,
-            (address, IStarknetMessaging)
-        );
+        (address bridgedToken_, address messagingContract_) = abi.decode(data, (address, address));
         bridgedToken(bridgedToken_);
         messagingContract(messagingContract_);
     }
 
-    modifier isValidL2Address(uint256 l2Address) {
-        require(l2Address != 0, "L2_ADDRESS_OUT_OF_RANGE");
-        require(l2Address < CairoConstants.FIELD_PRIME, "L2_ADDRESS_OUT_OF_RANGE");
-        _;
+    function isValidL2Address(uint256 l2Address) internal pure returns (bool) {
+        return (l2Address > 0 && l2Address < CairoConstants.FIELD_PRIME);
     }
 
-    modifier l2TokenBridgeSet() {
-        require(l2TokenBridge() != 0, "L2_TOKEN_CONTRACT_NOT_SET");
+    modifier onlyActive() {
+        require(isActive(), "NOT_ACTIVE_YET");
         _;
     }
 
@@ -91,13 +107,13 @@ abstract contract StarknetTokenBridge is
         _;
     }
 
-    function setL2TokenBridge(uint256 l2TokenBridge_)
-        external
-        isValidL2Address(l2TokenBridge_)
-        onlyGovernance
-    {
-        emit LogSetL2TokenBridge(l2TokenBridge_);
+    function setL2TokenBridge(uint256 l2TokenBridge_) external onlyGovernance {
+        require(isInitialized(), "CONTRACT_NOT_INITIALIZED");
+        require(isValidL2Address(l2TokenBridge_), "L2_ADDRESS_OUT_OF_RANGE");
         l2TokenBridge(l2TokenBridge_);
+        setActive();
+        emit LogSetL2TokenBridge(l2TokenBridge_);
+        emit LogBridgeActivated();
     }
 
     /*
@@ -119,6 +135,7 @@ abstract contract StarknetTokenBridge is
 
     function depositMessagePayload(uint256 amount, uint256 l2Recipient)
         private
+        pure
         returns (uint256[] memory)
     {
         uint256[] memory payload = new uint256[](3);
@@ -128,26 +145,27 @@ abstract contract StarknetTokenBridge is
         return payload;
     }
 
-    function sendMessage(uint256 amount, uint256 l2Recipient)
-        internal
-        l2TokenBridgeSet
-        isValidL2Address(l2Recipient)
-    {
+    function sendMessage(
+        uint256 amount,
+        uint256 l2Recipient,
+        uint256 fee
+    ) internal onlyActive {
+        require(amount > 0, "ZERO_DEPOSIT");
+        require(msg.value >= fee, "INSUFFICIENT_MSG_VALUE");
+        require(isValidL2Address(l2Recipient), "L2_ADDRESS_OUT_OF_RANGE");
         require(amount <= maxDeposit(), "TRANSFER_TO_STARKNET_AMOUNT_EXCEEDED");
-        emit LogDeposit(msg.sender, amount, l2Recipient);
 
-        (, uint256 nonce) = messagingContract().sendMessageToL2(
+        (, uint256 nonce) = messagingContract().sendMessageToL2{value: fee}(
             l2TokenBridge(),
             DEPOSIT_SELECTOR,
             depositMessagePayload(amount, l2Recipient)
         );
         require(depositors()[nonce] == address(0x0), "DEPOSIT_ALREADY_REGISTERED");
         depositors()[nonce] = msg.sender;
+        emit LogDeposit(msg.sender, amount, l2Recipient, nonce, fee);
     }
 
-    function consumeMessage(uint256 amount, address recipient) internal {
-        emit LogWithdrawal(recipient, amount);
-
+    function consumeMessage(uint256 amount, address recipient) internal onlyActive {
         uint256[] memory payload = new uint256[](4);
         payload[0] = TRANSFER_FROM_STARKNET;
         payload[1] = uint256(recipient);
@@ -155,6 +173,18 @@ abstract contract StarknetTokenBridge is
         payload[3] = amount >> UINT256_PART_SIZE_BITS;
 
         messagingContract().consumeMessageFromL2(l2TokenBridge(), payload);
+    }
+
+    function withdraw(uint256 amount, address recipient) public {
+        // Make sure we don't accidentally burn funds.
+        require(recipient != address(0x0), "INVALID_RECIPIENT");
+
+        // The call to consumeMessage will succeed only if a matching L2->L1 message
+        // exists and is ready for consumption.
+        consumeMessage(amount, recipient);
+        transferOutFunds(amount, recipient);
+
+        emit LogWithdrawal(recipient, amount);
     }
 
     function withdraw(uint256 amount) external {
@@ -178,7 +208,7 @@ abstract contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external onlyActive onlyDepositor(nonce) {
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
             DEPOSIT_SELECTOR,
@@ -195,7 +225,7 @@ abstract contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external onlyActive onlyDepositor(nonce) {
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
             DEPOSIT_SELECTOR,

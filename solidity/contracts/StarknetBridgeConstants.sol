@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-contract StarknetBridgeConstatns {
+contract StarknetBridgeConstants {
     // The selector of the deposit handler in L2.
     uint256 constant DEPOSIT_SELECTOR =
         1285101517810983806491589552491143496277809242732141897358598292095611420389;

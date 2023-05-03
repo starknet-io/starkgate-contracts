@@ -7,19 +7,12 @@ import "contracts/StarknetTokenBridge.sol";
 import "contracts/Transfers.sol";
 
 contract StarknetERC20Bridge is StarknetTokenBridge {
-    function deposit(uint256 amount, uint256 l2Recipient) external {
+    function deposit(uint256 amount, uint256 l2Recipient) external payable override {
         uint256 currentBalance = IERC20(bridgedToken()).balanceOf(address(this));
         require(currentBalance <= currentBalance + amount, "OVERFLOW");
         require(currentBalance + amount <= maxTotalBalance(), "MAX_BALANCE_EXCEEDED");
+        sendMessage(amount, l2Recipient, msg.value);
         Transfers.transferIn(bridgedToken(), msg.sender, amount);
-        sendMessage(amount, l2Recipient);
-    }
-
-    function withdraw(uint256 amount, address recipient) public override {
-        // The call to consumeMessage will succeed only if a matching L2->L1 message
-        // exists and is ready for consumption.
-        consumeMessage(amount, recipient);
-        Transfers.transferOut(bridgedToken(), recipient, amount);
     }
 
     function transferOutFunds(uint256 amount, address recipient) internal override {

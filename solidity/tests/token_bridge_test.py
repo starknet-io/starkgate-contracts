@@ -7,8 +7,9 @@ from starkware.starknet.services.api.messages import StarknetMessageToL1, Starkn
 from starkware.starknet.testing.contracts import MockStarknetMessaging
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+MAX_UINT = 2**256 - 1
 WITHDRAW = 0
-SELECTOR = 1285101517810983806491589552491143496277809242732141897358598292095611420389
+DEPOSIT_SELECTOR = 1285101517810983806491589552491143496277809242732141897358598292095611420389
 L2_TOKEN_CONTRACT = 42
 L2_RECIPIENT = 37
 
@@ -33,8 +34,8 @@ def setup_contracts(
     """
     token_bridge_wrapper.set_bridge_balance(initial_bridge_balance)
     token_bridge_wrapper.contract.setL2TokenBridge.transact(L2_TOKEN_CONTRACT)
-    token_bridge_wrapper.contract.setMaxTotalBalance.transact(2**256 - 1)
-    token_bridge_wrapper.contract.setMaxDeposit.transact(2**256 - 1)
+    token_bridge_wrapper.contract.setMaxTotalBalance.transact(MAX_UINT)
+    token_bridge_wrapper.contract.setMaxDeposit.transact(MAX_UINT)
 
 
 def test_set_l2_token_contract_invalid_address(token_bridge_wrapper: TokenBridgeWrapper):
@@ -62,54 +63,67 @@ def test_governance(token_bridge_wrapper: TokenBridgeWrapper):
             L2_TOKEN_CONTRACT, transact_args={"from": non_default_user}
         )
     with pytest.raises(EthRevertException, match="ONLY_GOVERNANCE"):
-        bridge_contract.setMaxTotalBalance.call(
-            2**256 - 1, transact_args={"from": non_default_user}
-        )
+        bridge_contract.setMaxTotalBalance.call(MAX_UINT, transact_args={"from": non_default_user})
     with pytest.raises(EthRevertException, match="ONLY_GOVERNANCE"):
-        bridge_contract.setMaxDeposit.call(2**256 - 1, transact_args={"from": non_default_user})
+        bridge_contract.setMaxDeposit.call(MAX_UINT, transact_args={"from": non_default_user})
 
     bridge_contract.setL2TokenBridge.transact(
         L2_TOKEN_CONTRACT, transact_args={"from": default_user}
     )
-    bridge_contract.setMaxTotalBalance.transact(2**256 - 1, transact_args={"from": default_user})
-    bridge_contract.setMaxDeposit.transact(2**256 - 1, transact_args={"from": default_user})
+    bridge_contract.setMaxTotalBalance.transact(MAX_UINT, transact_args={"from": default_user})
+    bridge_contract.setMaxDeposit.transact(MAX_UINT, transact_args={"from": default_user})
 
 
-def test_deposit_l2_token_contract_not_set(
-    token_bridge_wrapper: TokenBridgeWrapper, eth_test_utils: EthTestUtils
-):
+def test_deposit_l2_token_contract_not_set(token_bridge_wrapper: TokenBridgeWrapper):
     default_user = token_bridge_wrapper.default_user
     token_bridge_wrapper.contract.setMaxTotalBalance.transact(
-        2**256 - 1, transact_args={"from": default_user}
+        MAX_UINT, transact_args={"from": default_user}
     )
     token_bridge_wrapper.contract.setMaxDeposit.transact(
-        2**256 - 1, transact_args={"from": default_user}
+        MAX_UINT, transact_args={"from": default_user}
     )
-    with pytest.raises(EthRevertException, match="L2_TOKEN_CONTRACT_NOT_SET"):
+    with pytest.raises(EthRevertException, match="NOT_ACTIVE_YET"):
         token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
 
 
+def test_deposit_fee_too_high(token_bridge_wrapper: TokenBridgeWrapper):
+    setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
+    with pytest.raises(EthRevertException, match="MAX_L1_MSG_FEE_EXCEEDED"):
+        token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=10**20)
+
+
+@pytest.mark.parametrize("fee", [0, 1000], ids=["no_fee", "with_fee"])
+def test_deposit_zero_amount(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
+    setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
+    with pytest.raises(EthRevertException, match="ZERO_DEPOSIT"):
+        token_bridge_wrapper.deposit(amount=0, l2_recipient=L2_RECIPIENT, fee=fee)
+
+
+@pytest.mark.parametrize("fee", [0, 1000], ids=["no_fee", "with_fee"])
 def test_positive_flow(
     token_bridge_wrapper: TokenBridgeWrapper,
     mock_starknet_messaging_contract: EthContract,
+    eth_test_utils: EthTestUtils,
+    fee: int,
 ):
     setup_contracts(
         token_bridge_wrapper=token_bridge_wrapper,
         # In the full flow, the bridge receives funds only from calls to deposit.
         initial_bridge_balance=0,
     )
+    default_user = token_bridge_wrapper.default_user
 
     # We want to ignore costs from setup_contracts.
-    initial_user_balance = token_bridge_wrapper.get_account_balance(
-        token_bridge_wrapper.default_user
-    )
+    initial_user_balance = token_bridge_wrapper.get_account_balance(default_user)
     assert initial_user_balance >= DEPOSIT_AMOUNT + token_bridge_wrapper.TRANSACTION_COSTS_BOUND
 
-    deposit_receipt = token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    deposit_receipt = token_bridge_wrapper.deposit(
+        amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee
+    )
     total_costs = token_bridge_wrapper.get_tx_cost(deposit_receipt)
 
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
-    assert token_bridge_wrapper.get_account_balance(account=token_bridge_wrapper.default_user) == (
+    assert token_bridge_wrapper.get_account_balance(default_user) == (
         initial_user_balance - DEPOSIT_AMOUNT - total_costs
     )
 
@@ -118,7 +132,7 @@ def test_positive_flow(
         int(token_bridge_wrapper.contract.address, 16),
         [
             WITHDRAW,
-            int(token_bridge_wrapper.default_user.address, 16),
+            int(default_user.address, 16),
             WITHDRAW_AMOUNT % 2**128,
             WITHDRAW_AMOUNT // 2**128,
         ],
@@ -129,12 +143,14 @@ def test_positive_flow(
     total_costs += token_bridge_wrapper.get_tx_cost(withdrawal_receipt)
 
     assert token_bridge_wrapper.get_bridge_balance() == (DEPOSIT_AMOUNT - WITHDRAW_AMOUNT)
-    assert token_bridge_wrapper.get_account_balance(account=token_bridge_wrapper.default_user) == (
+    assert token_bridge_wrapper.get_account_balance(default_user) == (
         initial_user_balance - DEPOSIT_AMOUNT + WITHDRAW_AMOUNT - total_costs
     )
+    assert eth_test_utils.get_balance(mock_starknet_messaging_contract.address) == fee
 
 
-def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper):
+@pytest.mark.parametrize("fee", [0, 100], ids=["no_fee", "with_fee"])
+def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
     deposit_filter = token_bridge_wrapper.contract.w3_contract.events.LogDeposit.createFilter(
         fromBlock="latest"
     )
@@ -142,12 +158,14 @@ def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper):
         fromBlock="latest"
     )
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
 
     assert dict(deposit_filter.get_new_entries()[0].args) == dict(
         sender=token_bridge_wrapper.default_user.address,
         amount=DEPOSIT_AMOUNT,
         l2Recipient=L2_RECIPIENT,
+        nonce=0,
+        fee=fee,
     )
     assert len(withdrawal_filter.get_new_entries()) == 0
 
@@ -191,42 +209,54 @@ def test_set_values_events(token_bridge_wrapper: TokenBridgeWrapper):
 
     bridge_contract = token_bridge_wrapper.contract
     default_user = token_bridge_wrapper.default_user
-    tx = bridge_contract.setL2TokenBridge.transact(
+    bridge_contract.setL2TokenBridge.transact(
         L2_TOKEN_CONTRACT, transact_args={"from": default_user}
     )
     assert dict(l2_token_bridge_filter.get_new_entries()[0].args) == dict(value=L2_TOKEN_CONTRACT)
-    tx = bridge_contract.setMaxTotalBalance.transact(1, transact_args={"from": default_user})
+    bridge_contract.setMaxTotalBalance.transact(1, transact_args={"from": default_user})
     assert dict(max_total_balance_filter.get_new_entries()[0].args) == dict(value=1)
-    tx = bridge_contract.setMaxDeposit.transact(2, transact_args={"from": default_user})
+    bridge_contract.setMaxDeposit.transact(2, transact_args={"from": default_user})
     assert dict(max_deposit_filter.get_new_entries()[0].args) == dict(value=2)
 
 
-def test_deposit_message_sent(
-    token_bridge_wrapper: TokenBridgeWrapper, mock_starknet_messaging_contract
+@pytest.mark.parametrize("fee", [0, 1000], ids=["no_fee", "with_fee"])
+def test_deposit_message_sent_consumed(
+    token_bridge_wrapper: TokenBridgeWrapper, mock_starknet_messaging_contract, fee: int
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
 
     l1_to_l2_msg = StarknetMessageToL2(
         from_address=int(token_bridge_wrapper.contract.address, 16),
         to_address=L2_TOKEN_CONTRACT,
-        l1_handler_selector=SELECTOR,
+        l1_handler_selector=DEPOSIT_SELECTOR,
         payload=[L2_RECIPIENT, DEPOSIT_AMOUNT % 2**128, DEPOSIT_AMOUNT // 2**128],
         nonce=0,
     )
-    assert mock_starknet_messaging_contract.l1ToL2Messages.call(l1_to_l2_msg.get_hash()) == 1
+    assert mock_starknet_messaging_contract.l1ToL2Messages.call(l1_to_l2_msg.get_hash()) == fee + 1
+
+    deposit_msg_params = (
+        l1_to_l2_msg.from_address,
+        l1_to_l2_msg.to_address,
+        l1_to_l2_msg.l1_handler_selector,
+        l1_to_l2_msg.payload,
+        l1_to_l2_msg.nonce,
+    )
+    mock_starknet_messaging_contract.mockConsumeMessageToL2.transact(*deposit_msg_params)
+
+    # Can't consume the same message again.
+    with pytest.raises(EthRevertException, match="INVALID_MESSAGE_TO_CONSUME"):
+        mock_starknet_messaging_contract.mockConsumeMessageToL2.call(*deposit_msg_params)
 
 
 def test_withdraw_message_consumed(
     token_bridge_wrapper: TokenBridgeWrapper,
     mock_starknet_messaging_contract,
-    eth_test_utils: EthTestUtils,
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    bridge_address = int(token_bridge_wrapper.contract.address, 16)
     l2_to_l1_msg = StarknetMessageToL1(
         from_address=L2_TOKEN_CONTRACT,
-        to_address=bridge_address,
+        to_address=int(token_bridge_wrapper.contract.address, 16),
         payload=[
             WITHDRAW,
             int(token_bridge_wrapper.default_user.address, 16),
@@ -237,14 +267,7 @@ def test_withdraw_message_consumed(
 
     assert mock_starknet_messaging_contract.l2ToL1Messages.call(l2_to_l1_msg.get_hash()) == 0
     mock_starknet_messaging_contract.mockSendMessageFromL2.transact(
-        L2_TOKEN_CONTRACT,
-        bridge_address,
-        [
-            WITHDRAW,
-            int(eth_test_utils.accounts[0].address, 16),
-            WITHDRAW_AMOUNT % 2**128,
-            WITHDRAW_AMOUNT // 2**128,
-        ],
+        l2_to_l1_msg.from_address, l2_to_l1_msg.to_address, l2_to_l1_msg.payload
     )
     assert mock_starknet_messaging_contract.l2ToL1Messages.call(l2_to_l1_msg.get_hash()) == 1
 
@@ -350,12 +373,13 @@ def test_deposit_max_balance_exceeded(token_bridge_wrapper: TokenBridgeWrapper):
         token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
 
 
-def test_deposit_amount_almost_exceeded(token_bridge_wrapper: TokenBridgeWrapper):
+@pytest.mark.parametrize("fee", [0, 1000], ids=["no_fee", "with_fee"])
+def test_deposit_amount_almost_exceeded(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     token_bridge_wrapper.contract.setMaxDeposit.transact(
         DEPOSIT_AMOUNT, transact_args={"from": token_bridge_wrapper.default_user}
     )
-    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
 
 
 def test_deposit_amount_exceeded(token_bridge_wrapper: TokenBridgeWrapper):
@@ -370,17 +394,16 @@ def test_deposit_amount_exceeded(token_bridge_wrapper: TokenBridgeWrapper):
 def test_hacked_cancel_deposit(
     eth_test_utils: EthTestUtils,
     token_bridge_wrapper: TokenBridgeWrapper,
-    mock_starknet_messaging_contract: EthContract,
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper, initial_bridge_balance=0)
 
     # Make a deposit on the bridge.
-    tx_receipt = token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
 
     # Initiate deposit cancellation from non-depositor.
     with pytest.raises(EthRevertException, match="ONLY_DEPOSITOR"):
-        tx_receipt = token_bridge_wrapper.deposit_cancel_request(
+        token_bridge_wrapper.deposit_cancel_request(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
             nonce=0,
@@ -411,16 +434,21 @@ def test_hacked_cancel_deposit(
     assert token_bridge_wrapper.get_bridge_balance() == 0
 
 
+@pytest.mark.parametrize("fee", [0, 10000], ids=["no_fee", "with_fee"])
 def test_cancel_deposit(
     eth_test_utils: EthTestUtils,
     token_bridge_wrapper: TokenBridgeWrapper,
     mock_starknet_messaging_contract: EthContract,
+    fee: int,
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper, initial_bridge_balance=0)
     bridge = token_bridge_wrapper.contract
+    assert eth_test_utils.get_balance(mock_starknet_messaging_contract.address) == 0
 
     # Make a deposit on the bridge.
-    tx_receipt = token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
+    tx_receipt = token_bridge_wrapper.deposit(
+        amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee
+    )
     _sender = tx_receipt.w3_tx_receipt["from"]
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
     with pytest.raises(EthRevertException, match="NO_DEPOSIT_TO_CANCEL"):
@@ -451,7 +479,7 @@ def test_cancel_deposit(
     assert msg_cancel_req_ev == {
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
-        "selector": SELECTOR,
+        "selector": DEPOSIT_SELECTOR,
         "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
@@ -493,12 +521,14 @@ def test_cancel_deposit(
     assert msg_cancel_ev == {
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
-        "selector": SELECTOR,
+        "selector": DEPOSIT_SELECTOR,
         "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
 
+    # Deposit funds are returned, fee is not.
     assert token_bridge_wrapper.get_bridge_balance() == 0
+    assert eth_test_utils.get_balance(mock_starknet_messaging_contract.address) == fee
 
     # Try and fail to reclaim the deposit a second time.
     with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
