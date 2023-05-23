@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/libraries/NamedStorage.sol";
-import "contracts/external/tokens/ERC20/IERC20.sol";
-import "contracts/StarknetTokenBridge.sol";
-import "contracts/Transfers.sol";
+import "./libraries/NamedStorage.sol";
+import "./external/tokens/ERC20/IERC20.sol";
+import "./StarknetTokenBridge.sol";
+import "./Transfers.sol";
 
 contract StarknetERC20Bridge is StarknetTokenBridge {
     function deposit(uint256 amount, uint256 l2Recipient) external payable override {

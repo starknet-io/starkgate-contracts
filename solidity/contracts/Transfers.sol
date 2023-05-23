@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/libraries/Addresses.sol";
-import "contracts/external/tokens/ERC20/IERC20.sol";
+import "./libraries/Addresses.sol";
+import "./external/tokens/ERC20/IERC20.sol";
 
 library Transfers {
     using Addresses for address;

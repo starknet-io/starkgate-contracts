@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/external/GenericGovernance.sol";
-import "contracts/external/interfaces/Identity.sol";
-import "contracts/external/interfaces/ProxySupport.sol";
-import "contracts/libraries/CairoConstants.sol";
-import "contracts/StarknetBridgeConstants.sol";
-import "contracts/StarknetTokenStorage.sol";
-import "contracts/messaging/IStarknetMessaging.sol";
+import "./external/GenericGovernance.sol";
+import "./external/interfaces/Identity.sol";
+import "./external/interfaces/ProxySupport.sol";
+import "./libraries/CairoConstants.sol";
+import "./StarknetBridgeConstants.sol";
+import "./StarknetTokenStorage.sol";
+import "./messaging/IStarknetMessaging.sol";
 
 abstract contract StarknetTokenBridge is
     Identity,

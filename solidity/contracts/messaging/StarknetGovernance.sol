@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.6.12;
 
-import "contracts/external/Governance.sol";
+import "../external/Governance.sol";
 
 contract StarknetGovernance is Governance {
     string constant STARKNET_GOVERNANCE_INFO_TAG = "STARKNET_1.0_GOVERNANCE_INFO";
