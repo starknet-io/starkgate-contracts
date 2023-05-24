@@ -54,3 +54,9 @@ export PARACLEAR_L1_USER_ADDRESS=<L1_MINT_RECEPTOR_ADDRESS>
 export AMOUNT=<AMOUNT_TO_BE_MINTED> #(Will get transformed to the decimal precision of the contract)
 brownie run scripts/mint_tokens.py --network goerli
 ```
+
+To verify contracts on Etherscan, you need to set the following environment variables:
+
+```bash
+ETHERSCAN_TOKEN=<etherscan_api_token>
+```

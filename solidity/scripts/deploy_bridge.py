@@ -21,7 +21,7 @@ def main():
     admin = accounts.add(L1_ADMIN_PRIVATE_KEY)
 
     from_admin = {"from": admin}
-    starknet_bridge = StarknetERC20Bridge.deploy(from_admin)
+    starknet_bridge = StarknetERC20Bridge.deploy(from_admin, publish_source=True)
 
     # L1 USDC token needs to be deployed before the L1 Bridge
     init_data = encode(
@@ -33,7 +33,7 @@ def main():
         ],
     )
 
-    proxy = Proxy.deploy(UPGRADE_DELAY, from_admin)
+    proxy = Proxy.deploy(UPGRADE_DELAY, from_admin, publish_source=True)
     proxy.addImplementation(
         starknet_bridge.address,
         init_data,
