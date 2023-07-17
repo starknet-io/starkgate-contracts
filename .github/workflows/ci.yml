@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [ "dev"]
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - auto_merge_enabled
+
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Setup...
+        run: scripts/setup.sh
+
+      - name: Run Tests...
+        run: scripts/tests.sh

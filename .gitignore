@@ -1,0 +1,8 @@
+.vscode/
+.downloads/
+venv/
+.spr.yml
+starkware/
+__pycache__
+artifacts/
+cairo_contracts/

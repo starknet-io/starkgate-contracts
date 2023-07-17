@@ -1,0 +1,7 @@
+src/solidity/StarknetERC20BridgeTester.sol
+src/solidity/StarknetEthBridge.sol
+src/solidity/StarknetERC20Bridge.sol
+src/solidity/StarknetEthBridgeTester.sol
+starkware/solidity/test_contracts/TestERC20.sol
+starkware/solidity/upgrade/Proxy.sol
+starkware/starknet/testing/MockStarknetMessaging.sol

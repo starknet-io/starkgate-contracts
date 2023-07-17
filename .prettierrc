@@ -1,0 +1,5 @@
+{
+  "parser": "solidity-parse",
+  "compiler": "0.8.20",
+  "printWidth": 100
+}
