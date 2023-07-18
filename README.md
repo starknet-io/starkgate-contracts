@@ -1,6 +1,6 @@
 <div align="center">
 
-![starkgate](https://github.com/starkware-libs/starkgate/assets/88274280/45603468-0c91-4b3b-9864-f6859cb5ac35)
+![starkgate](https://github.com/starknet-io/starkgate-contracts/assets/88274280/1e8d90ee-c06b-42c5-8451-601bc8570223)
 [![License: Apache2.0](https://img.shields.io/badge/License-Apache2.0-green.svg)](LICENSE)
 </div>
 
