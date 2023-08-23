@@ -1,4 +1,6 @@
 from solidity.utils import load_contract
 
-StarknetERC20Bridge = load_contract("StarknetERC20Bridge")
+StarknetTokenBridge = load_contract("StarknetTokenBridge")
 StarknetEthBridge = load_contract("StarknetEthBridge")
+starkgate_registry = load_contract("StarkgateRegistry")
+starkgate_manager = load_contract("StarkgateManager")

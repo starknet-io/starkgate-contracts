@@ -6,3 +6,4 @@ starkware/
 __pycache__
 artifacts/
 cairo_contracts/
+third_party/

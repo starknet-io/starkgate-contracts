@@ -131,7 +131,7 @@ mod PermissionedERC20 {
     }
 
     #[constructor]
-    fn init(
+    fn constructor(
         ref self: ContractState,
         name: felt252,
         symbol: felt252,

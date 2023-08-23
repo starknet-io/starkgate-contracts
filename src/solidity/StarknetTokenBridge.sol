@@ -1,43 +1,45 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
 
-import "starkware/solidity/components/GenericGovernance.sol";
 import "starkware/solidity/interfaces/Identity.sol";
 import "starkware/solidity/interfaces/ProxySupport.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/cairo/eth/CairoConstants.sol";
-import "src/solidity/StarknetBridgeConstants.sol";
+import "src/solidity/StarkgateConstants.sol";
 import "src/solidity/StarknetTokenStorage.sol";
 import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
-abstract contract StarknetTokenBridge is
+import "starkware/solidity/libraries/NamedStorage.sol";
+import "starkware/solidity/libraries/Transfers.sol";
+import "starkware/solidity/tokens/ERC20/IERC20.sol";
+
+contract StarknetTokenBridge is
     Identity,
     StarknetTokenStorage,
     StarknetBridgeConstants,
-    GenericGovernance,
     ProxySupport
 {
     using Addresses for address;
-    event Deposit(
+    event DepositWithMessage(
         address indexed sender,
         uint256 amount,
         uint256 indexed l2Recipient,
-        uint256[] receipt,
+        uint256[] message,
         uint256 nonce,
         uint256 fee
     );
-    event DepositCancelRequest(
+    event DepositWithMessageCancelRequest(
         address indexed sender,
         uint256 amount,
         uint256 indexed l2Recipient,
-        uint256[] receipt,
+        uint256[] message,
         uint256 nonce
     );
-    event DepositReclaimed(
+    event DepositWithMessageReclaimed(
         address indexed sender,
         uint256 amount,
         uint256 indexed l2Recipient,
-        uint256[] receipt,
+        uint256[] message,
         uint256 nonce
     );
     event LogWithdrawal(address indexed recipient, uint256 amount);
@@ -45,9 +47,6 @@ abstract contract StarknetTokenBridge is
     event LogSetMaxTotalBalance(uint256 value);
     event LogSetMaxDeposit(uint256 value);
     event LogBridgeActivated();
-
-    // Deprecated events.
-    // These events are no longer emitted, but left in ABI for backward compatibility.
     event LogDeposit(
         address indexed sender,
         uint256 amount,
@@ -68,21 +67,42 @@ abstract contract StarknetTokenBridge is
         uint256 nonce
     );
 
-    function deposit(
-        uint256 amount,
-        uint256 l2Recipient,
-        uint256[] calldata receipt
-    ) external payable virtual;
-
-    function transferOutFunds(uint256 amount, address recipient) internal virtual;
-
-    /*
-      The constructor is in use here only to set the immutable tag in GenericGovernance.
-    */
-    constructor() GenericGovernance(GOVERNANCE_TAG) {}
-
     function isTokenContractRequired() internal pure virtual returns (bool) {
         return true;
+    }
+
+    function acceptDeposit(uint256 amount) internal virtual returns (uint256) {
+        uint256 currentBalance = IERC20(bridgedToken()).balanceOf(address(this));
+        require(currentBalance <= currentBalance + amount, "OVERFLOW");
+        require(currentBalance + amount <= maxTotalBalance(), "MAX_BALANCE_EXCEEDED");
+        Transfers.transferIn(bridgedToken(), msg.sender, amount);
+        return msg.value;
+    }
+
+    function transferOutFunds(uint256 amount, address recipient) internal virtual {
+        Transfers.transferOut(bridgedToken(), recipient, amount);
+    }
+
+    /**
+      Returns a string that identifies the contract.
+    */
+    function identify() external pure virtual returns (string memory) {
+        return "StarkWare_StarknetTokenBridge_2023_1";
+    }
+
+    function depositWithMessage(
+        uint256 amount,
+        uint256 l2Recipient,
+        uint256[] calldata message
+    ) external payable {
+        uint256 fee = acceptDeposit(amount);
+        sendMessage(amount, l2Recipient, message, HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR, fee);
+    }
+
+    function deposit(uint256 amount, uint256 l2Recipient) external payable {
+        uint256 fee = acceptDeposit(amount);
+        uint256[] memory noMessage = new uint256[](0);
+        sendMessage(amount, l2Recipient, noMessage, HANDLE_DEPOSIT_SELECTOR, fee);
     }
 
     function isInitialized() internal view override returns (bool) {
@@ -125,7 +145,11 @@ abstract contract StarknetTokenBridge is
     }
 
     function isValidL2Address(uint256 l2Address) internal pure returns (bool) {
-        return (l2Address > 0 && l2Address < CairoConstants.FIELD_PRIME);
+        return (l2Address != 0 && isFelt(l2Address));
+    }
+
+    function isFelt(uint256 maybeFelt) internal pure returns (bool) {
+        return (maybeFelt < CairoConstants.FIELD_PRIME);
     }
 
     modifier onlyActive() {
@@ -140,7 +164,7 @@ abstract contract StarknetTokenBridge is
         _;
     }
 
-    function setL2TokenBridge(uint256 l2TokenBridge_) external onlyGovernance {
+    function setL2TokenBridge(uint256 l2TokenBridge_) external onlyGovernanceAdmin {
         require(isInitialized(), "CONTRACT_NOT_INITIALIZED");
         require(isValidL2Address(l2TokenBridge_), "L2_ADDRESS_OUT_OF_RANGE");
         l2TokenBridge(l2TokenBridge_);
@@ -156,12 +180,12 @@ abstract contract StarknetTokenBridge is
       In this case, deposits will not be possible, until enough withdrawls are done, such that the
       total balance is below the limit.
     */
-    function setMaxTotalBalance(uint256 maxTotalBalance_) external onlyGovernance {
+    function setMaxTotalBalance(uint256 maxTotalBalance_) external onlyGovernanceAdmin {
         emit LogSetMaxTotalBalance(maxTotalBalance_);
         maxTotalBalance(maxTotalBalance_);
     }
 
-    function setMaxDeposit(uint256 maxDeposit_) external onlyGovernance {
+    function setMaxDeposit(uint256 maxDeposit_) external onlyGovernanceAdmin {
         emit LogSetMaxDeposit(maxDeposit_);
         maxDeposit(maxDeposit_);
     }
@@ -169,23 +193,34 @@ abstract contract StarknetTokenBridge is
     function depositMessagePayload(
         uint256 amount,
         uint256 l2Recipient,
-        uint256[] calldata receipt
+        uint256[] memory message
     ) private pure returns (uint256[] memory) {
         uint256 HEADER_SIZE = 3;
-        uint256[] memory payload = new uint256[](HEADER_SIZE + receipt.length);
+        uint256[] memory payload = new uint256[](HEADER_SIZE + message.length);
         payload[0] = l2Recipient;
         payload[1] = amount & (UINT256_PART_SIZE - 1);
         payload[2] = amount >> UINT256_PART_SIZE_BITS;
-        for (uint256 i = HEADER_SIZE; i < payload.length; i++) {
-            payload[i] = receipt[i - HEADER_SIZE];
+        for (uint256 i = 0; i < message.length; i++) {
+            require(isFelt(message[i]), "INVALID_MESSAGE_DATA");
+            payload[i + HEADER_SIZE] = message[i];
         }
         return payload;
+    }
+
+    function depositMessagePayload(uint256 amount, uint256 l2Recipient)
+        private
+        pure
+        returns (uint256[] memory)
+    {
+        uint256[] memory noMessage = new uint256[](0);
+        return depositMessagePayload(amount, l2Recipient, noMessage);
     }
 
     function sendMessage(
         uint256 amount,
         uint256 l2Recipient,
-        uint256[] calldata receipt,
+        uint256[] memory message,
+        uint256 selector,
         uint256 fee
     ) internal onlyActive {
         require(amount > 0, "ZERO_DEPOSIT");
@@ -195,12 +230,20 @@ abstract contract StarknetTokenBridge is
 
         (, uint256 nonce) = messagingContract().sendMessageToL2{value: fee}(
             l2TokenBridge(),
-            DEPOSIT_SELECTOR,
-            depositMessagePayload(amount, l2Recipient, receipt)
+            selector,
+            depositMessagePayload(amount, l2Recipient, message)
         );
         require(depositors()[nonce] == address(0x0), "DEPOSIT_ALREADY_REGISTERED");
         depositors()[nonce] = msg.sender;
-        emit Deposit(msg.sender, amount, l2Recipient, receipt, nonce, fee);
+
+        // The function exclusively supports two specific selectors, and any attempt to use an unknown
+        // selector will result in a transaction failure.
+        if (selector == HANDLE_DEPOSIT_SELECTOR) {
+            emit LogDeposit(msg.sender, amount, l2Recipient, nonce, fee);
+        } else {
+            require(selector == HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR, "UNKNOWN_SELECTOR");
+            emit DepositWithMessage(msg.sender, amount, l2Recipient, message, nonce, fee);
+        }
     }
 
     function consumeMessage(uint256 amount, address recipient) internal onlyActive {
@@ -242,35 +285,67 @@ abstract contract StarknetTokenBridge is
     function depositCancelRequest(
         uint256 amount,
         uint256 l2Recipient,
-        uint256[] calldata receipt,
         uint256 nonce
     ) external onlyActive onlyDepositor(nonce) {
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
-            DEPOSIT_SELECTOR,
-            depositMessagePayload(amount, l2Recipient, receipt),
+            HANDLE_DEPOSIT_SELECTOR,
+            depositMessagePayload(amount, l2Recipient),
             nonce
         );
 
-        // Only the depositor is allowed to cancel a deposit.
+        emit LogDepositCancelRequest(msg.sender, amount, l2Recipient, nonce);
+    }
 
-        emit DepositCancelRequest(msg.sender, amount, l2Recipient, receipt, nonce);
+    /*
+        See: depositCancelRequest docstring.
+    */
+    function depositWithMessageCancelRequest(
+        uint256 amount,
+        uint256 l2Recipient,
+        uint256[] calldata message,
+        uint256 nonce
+    ) external onlyActive onlyDepositor(nonce) {
+        messagingContract().startL1ToL2MessageCancellation(
+            l2TokenBridge(),
+            HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
+            depositMessagePayload(amount, l2Recipient, message),
+            nonce
+        );
+
+        emit DepositWithMessageCancelRequest(msg.sender, amount, l2Recipient, message, nonce);
+    }
+
+    function depositWithMessageReclaim(
+        uint256 amount,
+        uint256 l2Recipient,
+        uint256[] calldata message,
+        uint256 nonce
+    ) external onlyActive onlyDepositor(nonce) {
+        messagingContract().cancelL1ToL2Message(
+            l2TokenBridge(),
+            HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
+            depositMessagePayload(amount, l2Recipient, message),
+            nonce
+        );
+
+        transferOutFunds(amount, msg.sender);
+        emit DepositWithMessageReclaimed(msg.sender, amount, l2Recipient, message, nonce);
     }
 
     function depositReclaim(
         uint256 amount,
         uint256 l2Recipient,
-        uint256[] calldata receipt,
         uint256 nonce
     ) external onlyActive onlyDepositor(nonce) {
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
-            DEPOSIT_SELECTOR,
-            depositMessagePayload(amount, l2Recipient, receipt),
+            HANDLE_DEPOSIT_SELECTOR,
+            depositMessagePayload(amount, l2Recipient),
             nonce
         );
 
         transferOutFunds(amount, msg.sender);
-        emit DepositReclaimed(msg.sender, amount, l2Recipient, receipt, nonce);
+        emit LogDepositReclaimed(msg.sender, amount, l2Recipient, nonce);
     }
 }

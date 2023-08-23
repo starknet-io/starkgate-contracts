@@ -11,17 +11,13 @@ contract StarknetEthBridge is StarknetTokenBridge {
         return false;
     }
 
-    function deposit(
-        uint256 amount,
-        uint256 l2Recipient,
-        uint256[] calldata receipt
-    ) public payable override {
+    function acceptDeposit(uint256 amount) internal override returns (uint256) {
         // Make sure msg.value is enough to cover amount. The remaining value is fee.
         require(msg.value >= amount, "INSUFFICIENT_VALUE");
         uint256 fee = msg.value - amount;
         // The msg.value was already credited to this contract. Fee will be passed to StarkNet.
         require(address(this).balance - fee <= maxTotalBalance(), "MAX_BALANCE_EXCEEDED");
-        sendMessage(amount, l2Recipient, receipt, fee);
+        return fee;
     }
 
     function transferOutFunds(uint256 amount, address recipient) internal override {

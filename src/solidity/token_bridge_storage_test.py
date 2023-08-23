@@ -4,7 +4,7 @@ import pytest
 
 from starkware.eth.eth_test_utils import EthContract, EthTestUtils
 from starkware.python.utils import from_bytes
-from solidity.test_contracts import StarknetERC20BridgeTester, StarknetEthBridgeTester
+from solidity.test_contracts import StarknetTokenBridgeTester, StarknetEthBridgeTester
 
 
 LAYOUT_SIZE = 0
@@ -17,14 +17,14 @@ def eth_tester(eth_test_utils: EthTestUtils) -> EthContract:
 
 
 @pytest.fixture(scope="session")
-def erc20_tester(eth_test_utils: EthTestUtils) -> EthContract:
-    contract = eth_test_utils.accounts[0].deploy(StarknetERC20BridgeTester)
+def token_tester(eth_test_utils: EthTestUtils) -> EthContract:
+    contract = eth_test_utils.accounts[0].deploy(StarknetTokenBridgeTester)
     return contract
 
 
 @pytest.fixture
-def test_contract(request, eth_tester, erc20_tester) -> EthContract:
-    return eth_tester if hasattr(request, "param") and request.param == "eth" else erc20_tester
+def test_contract(request, eth_tester, token_tester) -> EthContract:
+    return eth_tester if hasattr(request, "param") and request.param == "eth" else token_tester
 
 
 @pytest.mark.parametrize("test_contract", ["eth", "erc20"], indirect=True)

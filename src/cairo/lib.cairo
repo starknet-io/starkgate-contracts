@@ -4,6 +4,7 @@ mod token_bridge_interface;
 mod erc20_interface;
 mod mintable_token_interface;
 mod replaceability_interface;
+mod roles_interface;
 
 // Modules.
 mod token_bridge;

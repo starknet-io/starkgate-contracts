@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
-import "src/solidity/StarknetERC20Bridge.sol";
+import "src/solidity/StarknetTokenBridge.sol";
 import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
-contract StarknetERC20BridgeTester is StarknetERC20Bridge {
+contract StarknetTokenBridgeTester is StarknetTokenBridge {
     uint256 marker;
 
     function setMarker(uint256 marker_) external {

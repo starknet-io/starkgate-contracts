@@ -23,6 +23,7 @@ mod TokenBridge {
         ITokenBridge, ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait
     };
     use super::super::access_control_interface::IAccessControl;
+    use super::super::roles_interface::IRoles;
     use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use super::super::mintable_token_interface::{
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
@@ -41,14 +42,30 @@ mod TokenBridge {
     const CONTRACT_IDENTITY: felt252 = 'STARKGATE';
     const CONTRACT_VERSION: felt252 = 2;
 
+
+    // int.from_bytes(Web3.keccak(text="ROLE_APP_GOVERNOR"), "big") & MASK_250 .
+    const APP_GOVERNOR: felt252 = 0xd2ead78c620e94b02d0a996e99298c59ddccfa1d8a0149080ac3a20de06068;
+
+    // int.from_bytes(Web3.keccak(text="ROLE_APP_ROLE_ADMIN"), "big") & MASK_250 .
+    const APP_ROLE_ADMIN: felt252 =
+        0x3e615638e0b79444a70f8c695bf8f2a47033bf1cf95691ec3130f64939cee99;
+
+    // int.from_bytes(Web3.keccak(text="ROLE_GOVERNANCE_ADMIN"), "big") & MASK_250 .
+    const GOVERNANCE_ADMIN: felt252 =
+        0x3711c9d994faf6055172091cb841fd4831aa743e6f3315163b06a122c841846;
+
+    // int.from_bytes(Web3.keccak(text="ROLE_OPERATOR"), "big") & MASK_250 .
+    const OPERATOR: felt252 = 0x023edb77f7c8cc9e38e8afe78954f703aeeda7fffe014eeb6e56ea84e62f6da7;
+
+    // int.from_bytes(Web3.keccak(text="ROLE_TOKEN_ADMIN"), "big") & MASK_250 .
+    const TOKEN_ADMIN: felt252 = 0x0128d63adbf6b09002c26caf55c47e2f26635807e3ef1b027218aa74c8d61a3e;
+
+    // int.from_bytes(Web3.keccak(text="ROLE_UPGRADE_GOVERNOR"), "big") & MASK_250 .
+    const UPGRADE_GOVERNOR: felt252 =
+        0x251e864ca2a080f55bce5da2452e8cfcafdbc951a3e7fff5023d558452ec228;
+
     #[storage]
     struct Storage {
-        // TODO split the governor into multiple governors, one for each functionality (e.g., one
-        // for token_bridge functions, one for replaceability).
-
-        // The address of the L2 governor of this contract. Only the governor can set the other
-        // storage variables.
-        governor: ContractAddress,
         // --- Token Bridge ---
         // The L1 bridge address. Zero when unset.
         l1_bridge: EthAddress,
@@ -66,6 +83,8 @@ mod TokenBridge {
         role_admin: LegacyMap<felt252, felt252>,
         // For each address and role, stores true if the address has this role; otherwise, false.
         role_members: LegacyMap<(felt252, ContractAddress), bool>,
+        // --- Roles ---
+        roles_initialized: bool,
     }
 
     #[event]
@@ -96,6 +115,31 @@ mod TokenBridge {
         RoleRevoked: RoleRevoked,
         #[event]
         RoleAdminChanged: RoleAdminChanged,
+        // --- Roles ---
+        #[event]
+        AppGovernorAdded: AppGovernorAdded,
+        #[event]
+        AppGovernorRemoved: AppGovernorRemoved,
+        #[event]
+        AppRoleAdminAdded: AppRoleAdminAdded,
+        #[event]
+        AppRoleAdminRemoved: AppRoleAdminRemoved,
+        #[event]
+        GovernanceAdminAdded: GovernanceAdminAdded,
+        #[event]
+        GovernanceAdminRemoved: GovernanceAdminRemoved,
+        #[event]
+        OperatorAdded: OperatorAdded,
+        #[event]
+        OperatorRemoved: OperatorRemoved,
+        #[event]
+        TokenAdminAdded: TokenAdminAdded,
+        #[event]
+        TokenAdminRemoved: TokenAdminRemoved,
+        #[event]
+        UpgradeGovernorAdded: UpgradeGovernorAdded,
+        #[event]
+        UpgradeGovernorRemoved: UpgradeGovernorRemoved,
     }
 
     // An event that is emitted when set_l1_bridge is called.
@@ -184,13 +228,80 @@ mod TokenBridge {
         new_admin_role: felt252,
     }
 
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct AppGovernorAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct AppGovernorRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct AppRoleAdminAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct AppRoleAdminRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct GovernanceAdminAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct GovernanceAdminRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct OperatorAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct OperatorRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct TokenAdminAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct TokenAdminRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct UpgradeGovernorAdded {
+        added_account: ContractAddress,
+        added_by: ContractAddress,
+    }
+
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct UpgradeGovernorRemoved {
+        removed_account: ContractAddress,
+        removed_by: ContractAddress,
+    }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState, governor_address: ContractAddress, upgrade_delay: u64, 
-    ) {
-        assert(governor_address.is_non_zero(), 'ZERO_GOVERNOR_ADDRESS');
-        self.governor.write(governor_address);
+    fn constructor(ref self: ContractState, upgrade_delay: u64) {
+        self._initialize_roles(provisional_governance_admin: get_caller_address());
         self.upgrade_delay.write(upgrade_delay);
     }
 
@@ -220,8 +331,7 @@ mod TokenBridge {
 
         // --- Access Control ---
         fn assert_only_role(self: @ContractState, role: felt252) {
-            let caller: ContractAddress = get_caller_address();
-            let authorized: bool = self.has_role(:role, account: caller);
+            let authorized: bool = self.has_role(:role, account: get_caller_address());
             assert(authorized, 'Caller is missing role');
         }
 
@@ -233,17 +343,25 @@ mod TokenBridge {
 
         fn _grant_role(ref self: ContractState, role: felt252, account: ContractAddress) {
             if !self.has_role(:role, :account) {
-                let caller: ContractAddress = get_caller_address();
                 self.role_members.write((role, account), true);
-                self.emit(Event::RoleGranted(RoleGranted { role, account, sender: caller }));
+                self
+                    .emit(
+                        Event::RoleGranted(
+                            RoleGranted { role, account, sender: get_caller_address() }
+                        )
+                    );
             }
         }
 
         fn _revoke_role(ref self: ContractState, role: felt252, account: ContractAddress) {
             if self.has_role(:role, :account) {
-                let caller: ContractAddress = get_caller_address();
                 self.role_members.write((role, account), false);
-                self.emit(Event::RoleRevoked(RoleRevoked { role, account, sender: caller }));
+                self
+                    .emit(
+                        Event::RoleRevoked(
+                            RoleRevoked { role, account, sender: get_caller_address() }
+                        )
+                    );
             }
         }
 
@@ -256,6 +374,76 @@ mod TokenBridge {
                         RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role }
                     )
                 );
+        }
+        // --- Roles ---
+        // TODO -  change the fn name to _grant_role when we can have modularity.
+        fn _grant_role_and_emit(
+            ref self: ContractState, role: felt252, account: ContractAddress, event: Event
+        ) {
+            if !self.has_role(:role, :account) {
+                assert(account.is_non_zero(), 'INVALID_ACCOUNT_ADDRESS');
+                self.grant_role(:role, :account);
+                self.emit(event);
+            }
+        }
+
+        // TODO -  change the fn name to _revoke_role when we can have modularity.
+        fn _revoke_role_and_emit(
+            ref self: ContractState, role: felt252, account: ContractAddress, event: Event
+        ) {
+            if self.has_role(:role, :account) {
+                self.revoke_role(:role, :account);
+                self.emit(event);
+            }
+        }
+        //
+        // WARNING
+        // The following internal method is unprotected and should not be used outside of a
+        // contract's constructor.
+        //
+        // TODO -  This function should be under initialize function under roles contract.
+
+        // Role                |   Role Admin
+        // ----------------------------------------
+        // GOVERNANCE_ADMIN    |   GOVERNANCE_ADMIN
+        // UPGRADE_GOVERNOR    |   GOVERNANCE_ADMIN
+        // APP_ROLE_ADMIN      |   GOVERNANCE_ADMIN
+        // APP_GOVERNOR        |   APP_ROLE_ADMIN
+        // OPERATOR            |   APP_ROLE_ADMIN
+        // TOKEN_ADMIN         |   APP_ROLE_ADMIN.
+        fn _initialize_roles(
+            ref self: ContractState, provisional_governance_admin: ContractAddress
+        ) {
+            let is_initialized = self.roles_initialized.read();
+            assert(!is_initialized, 'ROLES_ALREADY_INITIALIZED');
+            assert(provisional_governance_admin.is_non_zero(), 'ZERO_PROVISIONAL_GOV_ADMIN');
+            self.roles_initialized.write(true);
+            self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
+            self._set_role_admin(role: APP_GOVERNOR, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: APP_ROLE_ADMIN, admin_role: GOVERNANCE_ADMIN);
+            self._set_role_admin(role: GOVERNANCE_ADMIN, admin_role: GOVERNANCE_ADMIN);
+            self._set_role_admin(role: OPERATOR, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: TOKEN_ADMIN, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
+        }
+
+        fn only_app_governor(self: @ContractState) {
+            assert(self.is_app_governor(get_caller_address()), 'ONLY_APP_GOVERNOR');
+        }
+        fn only_app_role_admin(self: @ContractState) {
+            assert(self.is_app_role_admin(get_caller_address()), 'ONLY_APP_ROLE_ADMIN');
+        }
+        fn only_governance_admin(self: @ContractState) {
+            assert(self.is_governance_admin(get_caller_address()), 'ONLY_GOVERNANCE_ADMIN');
+        }
+        fn only_operator(self: @ContractState) {
+            assert(self.is_operator(get_caller_address()), 'ONLY_OPERATOR');
+        }
+        fn only_token_admin(self: @ContractState) {
+            assert(self.is_token_admin(get_caller_address()), 'ONLY_TOKEN_ADMIN');
+        }
+        fn only_upgrade_governor(self: @ContractState) {
+            assert(self.is_upgrade_governor(get_caller_address()), 'ONLY_UPGRADE_GOVERNOR');
         }
     }
 
@@ -271,8 +459,8 @@ mod TokenBridge {
         }
 
         fn set_l1_bridge(ref self: ContractState, l1_bridge_address: EthAddress) {
-            // The call is restricted to the governor.
-            assert(get_caller_address() == self.governor.read(), 'GOVERNOR_ONLY');
+            // The call is restricted to the app governor.
+            self.only_app_governor();
             assert(self.l1_bridge.read().is_zero(), 'L1_BRIDGE_ALREADY_INITIALIZED');
             assert(l1_bridge_address.is_non_zero(), 'ZERO_L1_BRIDGE_ADDRESS');
             self.l1_bridge.write(l1_bridge_address.into());
@@ -281,8 +469,8 @@ mod TokenBridge {
 
 
         fn set_l2_token(ref self: ContractState, l2_token_address: ContractAddress) {
-            // The call is restricted to the governor.
-            assert(get_caller_address() == self.governor.read(), 'GOVERNOR_ONLY');
+            // The call is restricted to the app governor.
+            self.only_app_governor();
             assert(self.l2_token.read().is_zero(), 'L2_TOKEN_ALREADY_INITIALIZED');
             assert(l2_token_address.is_non_zero(), 'ZERO_L2_TOKEN_ADDRESS');
             self.l2_token.write(l2_token_address);
@@ -352,8 +540,8 @@ mod TokenBridge {
         fn add_new_implementation(
             ref self: ContractState, implementation_data: ImplementationData
         ) {
-            // The call is restricted to the governor.
-            assert(get_caller_address() == self.governor.read(), 'GOVERNOR_ONLY');
+            // The call is restricted to the upgrade governor.
+            self.only_upgrade_governor();
 
             let now = get_block_timestamp();
             let upgrade_timelock = self.upgrade_delay.read();
@@ -371,8 +559,8 @@ mod TokenBridge {
                 );
         }
         fn remove_implementation(ref self: ContractState, implementation_data: ImplementationData) {
-            // The call is restricted to the governor.
-            assert(get_caller_address() == self.governor.read(), 'GOVERNOR_ONLY');
+            // The call is restricted to the upgrade governor.
+            self.only_upgrade_governor();
 
             // Read implementation activation time.
             let impl_key = calc_impl_key(:implementation_data);
@@ -389,8 +577,8 @@ mod TokenBridge {
             }
         }
         fn replace_to(ref self: ContractState, implementation_data: ImplementationData) {
-            // The call is restricted to the governor.
-            assert(get_caller_address() == self.governor.read(), 'GOVERNOR_ONLY');
+            // The call is restricted to the upgrade governor.
+            self.only_upgrade_governor();
 
             // Validate implementation is not finalized.
             assert(false == self.finalized.read(), 'FINALIZED');
@@ -453,12 +641,136 @@ mod TokenBridge {
         }
 
         fn renounce_role(ref self: ContractState, role: felt252, account: ContractAddress) {
-            let caller: ContractAddress = get_caller_address();
-            assert(caller == account, 'Can only renounce role for self');
+            assert(get_caller_address() == account, 'Can only renounce role for self');
             self._revoke_role(:role, :account);
         }
     }
 
+
+    #[external(v0)]
+    impl RolesImpl of IRoles<ContractState> {
+        fn is_app_governor(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: APP_GOVERNOR, :account)
+        }
+
+        fn is_app_role_admin(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: APP_ROLE_ADMIN, :account)
+        }
+
+        fn is_governance_admin(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: GOVERNANCE_ADMIN, :account)
+        }
+
+        fn is_operator(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: OPERATOR, :account)
+        }
+
+        fn is_token_admin(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: TOKEN_ADMIN, :account)
+        }
+
+        fn is_upgrade_governor(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: UPGRADE_GOVERNOR, :account)
+        }
+
+        fn register_app_governor(ref self: ContractState, account: ContractAddress) {
+            let event = Event::AppGovernorAdded(
+                AppGovernorAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: APP_GOVERNOR, :account, :event);
+        }
+
+        fn remove_app_governor(ref self: ContractState, account: ContractAddress) {
+            let event = Event::AppGovernorRemoved(
+                AppGovernorRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: APP_GOVERNOR, :account, :event);
+        }
+
+        fn register_app_role_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::AppRoleAdminAdded(
+                AppRoleAdminAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
+        }
+
+        fn remove_app_role_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::AppRoleAdminRemoved(
+                AppRoleAdminRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
+        }
+
+        fn register_governance_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::GovernanceAdminAdded(
+                GovernanceAdminAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: GOVERNANCE_ADMIN, :account, :event);
+        }
+
+        fn remove_governance_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::GovernanceAdminRemoved(
+                GovernanceAdminRemoved {
+                    removed_account: account, removed_by: get_caller_address()
+                }
+            );
+            self._revoke_role_and_emit(role: GOVERNANCE_ADMIN, :account, :event);
+        }
+
+        fn register_operator(ref self: ContractState, account: ContractAddress) {
+            let event = Event::OperatorAdded(
+                OperatorAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: OPERATOR, :account, :event);
+        }
+
+        fn remove_operator(ref self: ContractState, account: ContractAddress) {
+            let event = Event::OperatorRemoved(
+                OperatorRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: OPERATOR, :account, :event);
+        }
+
+        fn register_token_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::TokenAdminAdded(
+                TokenAdminAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: TOKEN_ADMIN, :account, :event);
+        }
+
+        fn remove_token_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::TokenAdminRemoved(
+                TokenAdminRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: TOKEN_ADMIN, :account, :event);
+        }
+
+        fn register_upgrade_governor(ref self: ContractState, account: ContractAddress) {
+            let event = Event::UpgradeGovernorAdded(
+                UpgradeGovernorAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: UPGRADE_GOVERNOR, :account, :event);
+        }
+
+        fn remove_upgrade_governor(ref self: ContractState, account: ContractAddress) {
+            let event = Event::UpgradeGovernorRemoved(
+                UpgradeGovernorRemoved {
+                    removed_account: account, removed_by: get_caller_address()
+                }
+            );
+            self._revoke_role_and_emit(role: UPGRADE_GOVERNOR, :account, :event);
+        }
+
+        // TODO -  change the fn name to renounce_role when we can have modularity.
+        // TODO -  change to GOVERNANCE_ADMIN_CANNOT_SELF_REMOVE when the 32 characters limitations
+        // is off.
+        fn renounce(ref self: ContractState, role: felt252) {
+            assert(role != GOVERNANCE_ADMIN, 'GOV_ADMIN_CANNOT_SELF_REMOVE');
+            self.renounce_role(:role, account: get_caller_address())
+        // TODO add another event? Currently there are two events when a role is removed but
+        // only one if it was renounced.
+        }
+    }
 
     #[l1_handler]
     fn handle_deposit(

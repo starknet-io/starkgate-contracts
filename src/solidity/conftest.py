@@ -17,8 +17,7 @@ from starkware.eth.eth_test_utils import (
 
 from starkware.starknet.testing.starknet import Starknet
 
-
-from solidity.contracts import StarknetERC20Bridge
+from solidity.contracts import StarknetTokenBridge
 from solidity.test_contracts import StarknetEthBridgeTester
 
 UPGRADE_DELAY = 0
@@ -62,6 +61,12 @@ async def session_starknet() -> Starknet:
     # We want to start with a non-zero block/time (this would fail tests).
     advance_time(starknet=starknet, block_time_diff=1, block_num_diff=1)
     return starknet
+
+
+def deploy_proxy(governor: EthContract) -> EthContract:
+    proxy = governor.deploy(Proxy, UPGRADE_DELAY)
+    proxy.registerUpgradeGovernor(governor.address)
+    return proxy
 
 
 def add_implementation_and_upgrade(proxy, new_impl, init_data, governor, is_finalizing=False):
@@ -147,6 +152,7 @@ class TokenBridgeWrapper(ABC):
         self.non_default_user = eth_test_utils.accounts[1]
         self.contract = self.default_user.deploy(compiled_bridge_contract)
         proxy = self.default_user.deploy(Proxy, UPGRADE_DELAY)
+        proxy.registerUpgradeGovernor(self.default_user.address)
 
         add_implementation_and_upgrade(
             proxy=proxy,
@@ -162,8 +168,8 @@ class TokenBridgeWrapper(ABC):
         amount: int,
         l2_recipient: int,
         fee: int,
-        receipt: list[int] = [],
         user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
     ) -> EthReceipt:
         """
         Deposit tokens into the bridge. If user isn't specified, the default user will be used.
@@ -183,7 +189,12 @@ class TokenBridgeWrapper(ABC):
             )
 
     def get_deposit_fee(self, receipt: EthReceipt) -> int:
-        logs = self.contract.w3_contract.events.Deposit().processReceipt(receipt.w3_tx_receipt)
+        logs = self.contract.w3_contract.events.LogDeposit().processReceipt(
+            receipt.w3_tx_receipt
+        ) + self.contract.w3_contract.events.DepositWithMessage().processReceipt(
+            receipt.w3_tx_receipt
+        )
+
         return 0 if len(logs) == 0 else logs[0].args.fee
 
     def deposit_cancel_request(
@@ -191,28 +202,39 @@ class TokenBridgeWrapper(ABC):
         amount: int,
         l2_recipient: int,
         nonce: int,
-        receipt: list[int] = [],
         user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
     ) -> EthReceipt:
         if user is None:
             user = self.default_user
-        return self.contract.depositCancelRequest.transact(
-            amount, l2_recipient, receipt, nonce, transact_args={"from": user}
-        )
+
+        if message is None:
+            return self.contract.depositCancelRequest.transact(
+                amount, l2_recipient, nonce, transact_args={"from": user}
+            )
+        else:
+            return self.contract.depositWithMessageCancelRequest.transact(
+                amount, l2_recipient, message, nonce, transact_args={"from": user}
+            )
 
     def deposit_reclaim(
         self,
         amount: int,
         l2_recipient: int,
         nonce: int,
-        receipt: list[int] = [],
         user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
     ) -> EthReceipt:
         if user is None:
             user = self.default_user
-        return self.contract.depositReclaim.transact(
-            amount, l2_recipient, receipt, nonce, transact_args={"from": user}
-        )
+        if message is None:
+            return self.contract.depositReclaim.transact(
+                amount, l2_recipient, nonce, transact_args={"from": user}
+            )
+        else:
+            return self.contract.depositWithMessageReclaim.transact(
+                amount, l2_recipient, message, nonce, transact_args={"from": user}
+            )
 
     @abstractmethod
     def get_account_balance(self, account: EthAccount) -> int:
@@ -244,7 +266,7 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(TestERC20)
 
         super().__init__(
-            compiled_bridge_contract=StarknetERC20Bridge,
+            compiled_bridge_contract=StarknetTokenBridge,
             eth_test_utils=eth_test_utils,
             init_data=chain_hexes_to_bytes(
                 [
@@ -264,20 +286,27 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         amount: int,
         l2_recipient: int,
         fee: int = 0,
-        receipt: list[int] = [],
         user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
     ) -> EthReceipt:
         if user is None:
             user = self.default_user
         self.mock_erc20_contract.approve.transact(
             self.contract.address, amount, transact_args={"from": user}
         )
-        return self.contract.deposit.transact(
-            amount,
-            l2_recipient,
-            receipt,
-            transact_args={"from": user, "value": fee},
-        )
+        if message is None:
+            return self.contract.deposit(
+                amount,
+                l2_recipient,
+                transact_args={"from": user, "value": fee},
+            )
+        else:
+            return self.contract.depositWithMessage(
+                amount,
+                l2_recipient,
+                message,
+                transact_args={"from": user, "value": fee},
+            )
 
     def get_account_balance(self, account: EthAccount) -> int:
         return self.mock_erc20_contract.balanceOf.call(account.address)
@@ -323,17 +352,25 @@ class EthBridgeWrapper(TokenBridgeWrapper):
         amount: int,
         l2_recipient: int,
         fee: int = 0,
-        receipt: list[int] = [],
         user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
     ) -> EthReceipt:
         if user is None:
             user = self.default_user
-        return self.contract.deposit.transact(
-            amount,
-            l2_recipient,
-            receipt,
-            transact_args={"from": user, "value": amount + fee},
-        )
+
+        if message is None:
+            return self.contract.deposit(
+                amount,
+                l2_recipient,
+                transact_args={"from": user, "value": amount + fee},
+            )
+        else:
+            return self.contract.depositWithMessage.transact(
+                amount,
+                l2_recipient,
+                message,
+                transact_args={"from": user, "value": amount + fee},
+            )
 
     def get_account_balance(self, account: EthAccount) -> int:
         return account.balance
