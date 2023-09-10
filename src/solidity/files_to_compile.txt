@@ -1,3 +1,4 @@
+src/solidity/FeltToStrTester.sol
 src/solidity/StarknetTokenBridgeTester.sol
 src/solidity/StarknetEthBridge.sol
 src/solidity/StarknetTokenBridge.sol

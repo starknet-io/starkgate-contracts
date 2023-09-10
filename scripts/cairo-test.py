@@ -7,7 +7,7 @@ import os
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 EXECUTABLE = os.path.join(ROOT_DIR, ".downloads", "cairo", "bin", "cairo-test")
-EXPECTED_EXECUTABLE_VERSION = "cairo-test 2.0.0-rc5"
+EXPECTED_EXECUTABLE_VERSION = "cairo-test 2.2.0"
 
 
 def main():
@@ -22,9 +22,10 @@ def main():
         print("Setup Error! Run : 'sh ./scripts/setup.sh' to solve this problem.")
         sys.exit(1)
 
-    assert (
-        executable_version == EXPECTED_EXECUTABLE_VERSION
-    ), f"Wrong version got: {executable_version}, Expected: {EXPECTED_EXECUTABLE_VERSION}. Run : 'sh ./scripts/setup.sh' to solve this problem."
+    assert executable_version == EXPECTED_EXECUTABLE_VERSION, (
+        f"Wrong version got: {executable_version}, Expected: {EXPECTED_EXECUTABLE_VERSION}."
+        "Run : 'sh ./scripts/setup.sh' to solve this problem."
+    )
 
     try:
         subprocess.check_call([EXECUTABLE, *args])

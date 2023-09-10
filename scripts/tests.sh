@@ -17,6 +17,14 @@ else
     exit 1
 fi
 
+
+printf "${YELLOW}Check Line Length...\n"
+scripts/line_length.py -l 110
+if  [ $? -ne 0 ]; then
+    exit 1
+fi
+
+
 printf "${YELLOW}Run black...\n"
 black  -l 100 --diff --check --color --diff .
 if [ $? -eq 0 ]; then

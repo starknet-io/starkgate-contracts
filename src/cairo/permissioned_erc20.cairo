@@ -11,12 +11,12 @@ mod PermissionedERC20 {
 
     #[storage]
     struct Storage {
-        name: felt252,
-        symbol: felt252,
-        decimals: u8,
-        total_supply: u256,
-        balances: LegacyMap<ContractAddress, u256>,
-        allowances: LegacyMap<(ContractAddress, ContractAddress), u256>,
+        ERC20_name: felt252,
+        ERC20_symbol: felt252,
+        ERC20_decimals: u8,
+        ERC20_total_supply: u256,
+        ERC20_balances: LegacyMap<ContractAddress, u256>,
+        ERC20_allowances: LegacyMap<(ContractAddress, ContractAddress), u256>,
         permitted_minter: ContractAddress,
     }
 
@@ -44,17 +44,17 @@ mod PermissionedERC20 {
     #[generate_trait]
     impl InternalFunctions of IInternalFunctions {
         fn _initializer(ref self: ContractState, name: felt252, symbol: felt252, decimals: u8) {
-            self.name.write(name);
-            self.symbol.write(symbol);
-            self.decimals.write(decimals);
+            self.ERC20_name.write(name);
+            self.ERC20_symbol.write(symbol);
+            self.ERC20_decimals.write(decimals);
         }
 
         // Mintable token internal functions.
 
         fn _mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
             assert(recipient.is_non_zero(), 'ERC20: mint to 0');
-            self.total_supply.write(self.total_supply.read() + amount);
-            self.balances.write(recipient, self.balances.read(recipient) + amount);
+            self.ERC20_total_supply.write(self.ERC20_total_supply.read() + amount);
+            self.ERC20_balances.write(recipient, self.ERC20_balances.read(recipient) + amount);
             self
                 .emit(
                     Event::Transfer(
@@ -67,8 +67,8 @@ mod PermissionedERC20 {
 
         fn _burn(ref self: ContractState, account: ContractAddress, amount: u256) {
             assert(!account.is_zero(), 'ERC20: burn from 0');
-            self.total_supply.write(self.total_supply.read() - amount);
-            self.balances.write(account, self.balances.read(account) - amount);
+            self.ERC20_total_supply.write(self.ERC20_total_supply.read() - amount);
+            self.ERC20_balances.write(account, self.ERC20_balances.read(account) - amount);
             self
                 .emit(
                     Event::Transfer(
@@ -83,7 +83,10 @@ mod PermissionedERC20 {
             ref self: ContractState, spender: ContractAddress, added_value: u256
         ) -> bool {
             let caller = get_caller_address();
-            self._approve(caller, spender, self.allowances.read((caller, spender)) + added_value);
+            self
+                ._approve(
+                    caller, spender, self.ERC20_allowances.read((caller, spender)) + added_value
+                );
             true
         }
 
@@ -93,7 +96,9 @@ mod PermissionedERC20 {
             let caller = get_caller_address();
             self
                 ._approve(
-                    caller, spender, self.allowances.read((caller, spender)) - subtracted_value
+                    caller,
+                    spender,
+                    self.ERC20_allowances.read((caller, spender)) - subtracted_value
                 );
             true
         }
@@ -103,7 +108,7 @@ mod PermissionedERC20 {
         ) {
             assert(!owner.is_zero(), 'ERC20: approve from 0');
             assert(!spender.is_zero(), 'ERC20: approve to 0');
-            self.allowances.write((owner, spender), amount);
+            self.ERC20_allowances.write((owner, spender), amount);
             self.emit(Event::Approval(Approval { owner: owner, spender: spender, value: amount }));
         }
 
@@ -115,15 +120,15 @@ mod PermissionedERC20 {
         ) {
             assert(!sender.is_zero(), 'ERC20: transfer from 0');
             assert(!recipient.is_zero(), 'ERC20: transfer to 0');
-            self.balances.write(sender, self.balances.read(sender) - amount);
-            self.balances.write(recipient, self.balances.read(recipient) + amount);
+            self.ERC20_balances.write(sender, self.ERC20_balances.read(sender) - amount);
+            self.ERC20_balances.write(recipient, self.ERC20_balances.read(recipient) + amount);
             self.emit(Event::Transfer(Transfer { from: sender, to: recipient, value: amount }));
         }
 
         fn _spend_allowance(
             ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
         ) {
-            let current_allowance = self.allowances.read((owner, spender));
+            let current_allowance = self.ERC20_allowances.read((owner, spender));
             if current_allowance != BoundedInt::max() {
                 self._approve(owner, spender, current_allowance - amount);
             }
@@ -163,29 +168,29 @@ mod PermissionedERC20 {
     #[external(v0)]
     impl PermissionedERC20 of IERC20<ContractState> {
         fn name(self: @ContractState) -> felt252 {
-            self.name.read()
+            self.ERC20_name.read()
         }
 
         fn symbol(self: @ContractState) -> felt252 {
-            self.symbol.read()
+            self.ERC20_symbol.read()
         }
 
         fn decimals(self: @ContractState) -> u8 {
-            self.decimals.read()
+            self.ERC20_decimals.read()
         }
 
         fn total_supply(self: @ContractState) -> u256 {
-            self.total_supply.read()
+            self.ERC20_total_supply.read()
         }
 
         fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
-            self.balances.read(account)
+            self.ERC20_balances.read(account)
         }
 
         fn allowance(
             self: @ContractState, owner: ContractAddress, spender: ContractAddress
         ) -> u256 {
-            self.allowances.read((owner, spender))
+            self.ERC20_allowances.read((owner, spender))
         }
 
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {

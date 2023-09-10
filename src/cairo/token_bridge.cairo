@@ -8,7 +8,16 @@ const DEFAULT_ADMIN_ROLE: felt252 = 0;
 
 #[starknet::contract]
 mod TokenBridge {
+    use super::super::roles_interface::APP_GOVERNOR;
+    use super::super::roles_interface::APP_ROLE_ADMIN;
+    use super::super::roles_interface::GOVERNANCE_ADMIN;
+    use super::super::roles_interface::OPERATOR;
+    use super::super::roles_interface::TOKEN_ADMIN;
+    use super::super::roles_interface::UPGRADE_GOVERNOR;
+    use core::result::ResultTrait;
+    use starknet::SyscallResultTrait;
     use array::ArrayTrait;
+    use core::hash::LegacyHash;
     use integer::{Felt252IntoU256, U64IntoFelt252};
     use option::OptionTrait;
     use serde::Serde;
@@ -16,7 +25,7 @@ mod TokenBridge {
     use starknet::{
         ContractAddress, get_caller_address, EthAddress, EthAddressIntoFelt252, EthAddressSerde,
         EthAddressZeroable, syscalls::send_message_to_l1_syscall, get_block_timestamp,
-        replace_class_syscall
+        replace_class_syscall, deploy_syscall, get_contract_address,
     };
     use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
     use super::super::token_bridge_interface::{
@@ -42,35 +51,22 @@ mod TokenBridge {
     const CONTRACT_IDENTITY: felt252 = 'STARKGATE';
     const CONTRACT_VERSION: felt252 = 2;
 
-
-    // int.from_bytes(Web3.keccak(text="ROLE_APP_GOVERNOR"), "big") & MASK_250 .
-    const APP_GOVERNOR: felt252 = 0xd2ead78c620e94b02d0a996e99298c59ddccfa1d8a0149080ac3a20de06068;
-
-    // int.from_bytes(Web3.keccak(text="ROLE_APP_ROLE_ADMIN"), "big") & MASK_250 .
-    const APP_ROLE_ADMIN: felt252 =
-        0x3e615638e0b79444a70f8c695bf8f2a47033bf1cf95691ec3130f64939cee99;
-
-    // int.from_bytes(Web3.keccak(text="ROLE_GOVERNANCE_ADMIN"), "big") & MASK_250 .
-    const GOVERNANCE_ADMIN: felt252 =
-        0x3711c9d994faf6055172091cb841fd4831aa743e6f3315163b06a122c841846;
-
-    // int.from_bytes(Web3.keccak(text="ROLE_OPERATOR"), "big") & MASK_250 .
-    const OPERATOR: felt252 = 0x023edb77f7c8cc9e38e8afe78954f703aeeda7fffe014eeb6e56ea84e62f6da7;
-
-    // int.from_bytes(Web3.keccak(text="ROLE_TOKEN_ADMIN"), "big") & MASK_250 .
-    const TOKEN_ADMIN: felt252 = 0x0128d63adbf6b09002c26caf55c47e2f26635807e3ef1b027218aa74c8d61a3e;
-
-    // int.from_bytes(Web3.keccak(text="ROLE_UPGRADE_GOVERNOR"), "big") & MASK_250 .
-    const UPGRADE_GOVERNOR: felt252 =
-        0x251e864ca2a080f55bce5da2452e8cfcafdbc951a3e7fff5023d558452ec228;
+    impl LegacyHashEthAddress of LegacyHash<starknet::EthAddress> {
+        fn hash(state: felt252, value: starknet::EthAddress) -> felt252 {
+            LegacyHash::<felt252>::hash(state, value.into())
+        }
+    }
 
     #[storage]
     struct Storage {
         // --- Token Bridge ---
         // The L1 bridge address. Zero when unset.
         l1_bridge: EthAddress,
-        // The L2 token contract address. Zero when unset.
-        l2_token: ContractAddress,
+        // The erc20 class hash
+        erc20_class_hash: ClassHash,
+        // Mapping from between l1<->l2 token addresses.
+        l1_l2_token_map: LegacyMap<EthAddress, ContractAddress>,
+        l2_l1_token_map: LegacyMap<ContractAddress, EthAddress>,
         // --- Replaceability ---
         // Delay in seconds before performing an upgrade.
         upgrade_delay: u64,
@@ -83,8 +79,6 @@ mod TokenBridge {
         role_admin: LegacyMap<felt252, felt252>,
         // For each address and role, stores true if the address has this role; otherwise, false.
         role_members: LegacyMap<(felt252, ContractAddress), bool>,
-        // --- Roles ---
-        roles_initialized: bool,
     }
 
     #[event]
@@ -94,11 +88,12 @@ mod TokenBridge {
         #[event]
         L1BridgeSet: L1BridgeSet,
         #[event]
-        L2TokenSet: L2TokenSet,
+        Erc20ClassHashStored: Erc20ClassHashStored,
         #[event]
         WithdrawInitiated: WithdrawInitiated,
         #[event]
         DepositHandled: DepositHandled,
+        DeployHandled: DeployHandled,
         // --- Replaceability ---
         #[event]
         ImplementationAdded: ImplementationAdded,
@@ -146,54 +141,62 @@ mod TokenBridge {
     // * l1_bridge_address is the new l1 bridge address.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct L1BridgeSet {
-        l1_bridge_address: EthAddress, 
+        l1_bridge_address: EthAddress,
     }
 
-    // An event that is emitted when set_l2_token is called.
-    // * l2_token_address is the new l2 token address.
+
+    // Emitted when setting a new erc20_class_hash (for future).
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct L2TokenSet {
-        l2_token_address: ContractAddress, 
+    struct Erc20ClassHashStored {
+        previous_hash: ClassHash,
+        erc20_class_hash: ClassHash,
     }
 
     // An event that is emitted when initiate_withdraw is called.
-    // * l1_recipient is the l1 recipient address.
-    // * amount is the amount to withdraw.
-    // * caller_address is the address from which the call was made.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct WithdrawInitiated {
         l1_recipient: EthAddress,
+        token: EthAddress,
         amount: u256,
         caller_address: ContractAddress,
     }
 
     // An event that is emitted when handle_deposit is called.
-    // * account is the recipient address.
-    // * amount is the amount to deposit.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DepositHandled {
         account: ContractAddress,
+        token: EthAddress,
         amount: u256,
+    }
+
+    // Emitted upon processing of the handle_deply L1 handler.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct DeployHandled {
+        l1_token_address: EthAddress,
+        l2_token_address: ContractAddress,
+        name: felt252,
+        symbol: felt252,
+        decimals: u8,
     }
 
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct ImplementationAdded {
-        implementation_data: ImplementationData, 
+        implementation_data: ImplementationData,
     }
 
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct ImplementationRemoved {
-        implementation_data: ImplementationData, 
+        implementation_data: ImplementationData,
     }
 
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct ImplementationReplaced {
-        implementation_data: ImplementationData, 
+        implementation_data: ImplementationData,
     }
 
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct ImplementationFinalized {
-        impl_hash: ClassHash, 
+        impl_hash: ClassHash,
     }
 
     // An event that is emitted when `account` is granted `role`.
@@ -301,7 +304,7 @@ mod TokenBridge {
 
     #[constructor]
     fn constructor(ref self: ContractState, upgrade_delay: u64) {
-        self._initialize_roles(provisional_governance_admin: get_caller_address());
+        self._initialize_roles();
         self.upgrade_delay.write(upgrade_delay);
     }
 
@@ -313,13 +316,6 @@ mod TokenBridge {
             let l1_bridge_address = self.l1_bridge.read();
             assert(l1_bridge_address.is_non_zero(), 'UNINITIALIZED_L1_BRIDGE_ADDRESS');
             l1_bridge_address
-        }
-
-        // Read l2_token and verify it's initialized.
-        fn get_l2_token_address(self: @ContractState) -> ContractAddress {
-            let l2_token_address = self.l2_token.read();
-            assert(l2_token_address.is_non_zero(), 'UNINITIALIZED_L2_TOKEN');
-            l2_token_address
         }
 
         // --- Replaceability ---
@@ -403,21 +399,10 @@ mod TokenBridge {
         //
         // TODO -  This function should be under initialize function under roles contract.
 
-        // Role                |   Role Admin
-        // ----------------------------------------
-        // GOVERNANCE_ADMIN    |   GOVERNANCE_ADMIN
-        // UPGRADE_GOVERNOR    |   GOVERNANCE_ADMIN
-        // APP_ROLE_ADMIN      |   GOVERNANCE_ADMIN
-        // APP_GOVERNOR        |   APP_ROLE_ADMIN
-        // OPERATOR            |   APP_ROLE_ADMIN
-        // TOKEN_ADMIN         |   APP_ROLE_ADMIN.
-        fn _initialize_roles(
-            ref self: ContractState, provisional_governance_admin: ContractAddress
-        ) {
-            let is_initialized = self.roles_initialized.read();
-            assert(!is_initialized, 'ROLES_ALREADY_INITIALIZED');
-            assert(provisional_governance_admin.is_non_zero(), 'ZERO_PROVISIONAL_GOV_ADMIN');
-            self.roles_initialized.write(true);
+        fn _initialize_roles(ref self: ContractState) {
+            let provisional_governance_admin = get_caller_address();
+            let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
+            assert(un_initialized, 'ROLES_ALREADY_INITIALIZED');
             self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
             self._set_role_admin(role: APP_GOVERNOR, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: APP_ROLE_ADMIN, admin_role: GOVERNANCE_ADMIN);
@@ -458,57 +443,81 @@ mod TokenBridge {
             CONTRACT_IDENTITY
         }
 
+        fn get_erc20_class_hash(self: @ContractState) -> ClassHash {
+            self.erc20_class_hash.read()
+        }
+
+
+        fn get_l1_token_address(
+            self: @ContractState, l2_token_address: ContractAddress
+        ) -> EthAddress {
+            self.l2_l1_token_map.read(l2_token_address)
+        }
+        fn get_l2_token_address(
+            self: @ContractState, l1_token_address: EthAddress
+        ) -> ContractAddress {
+            self.l1_l2_token_map.read(l1_token_address)
+        }
+
         fn set_l1_bridge(ref self: ContractState, l1_bridge_address: EthAddress) {
             // The call is restricted to the app governor.
             self.only_app_governor();
             assert(self.l1_bridge.read().is_zero(), 'L1_BRIDGE_ALREADY_INITIALIZED');
             assert(l1_bridge_address.is_non_zero(), 'ZERO_L1_BRIDGE_ADDRESS');
-            self.l1_bridge.write(l1_bridge_address.into());
+            self.l1_bridge.write(l1_bridge_address);
             self.emit(Event::L1BridgeSet(L1BridgeSet { l1_bridge_address }));
         }
 
-
-        fn set_l2_token(ref self: ContractState, l2_token_address: ContractAddress) {
+        fn set_erc20_class_hash(ref self: ContractState, erc20_class_hash: ClassHash) {
             // The call is restricted to the app governor.
             self.only_app_governor();
-            assert(self.l2_token.read().is_zero(), 'L2_TOKEN_ALREADY_INITIALIZED');
-            assert(l2_token_address.is_non_zero(), 'ZERO_L2_TOKEN_ADDRESS');
-            self.l2_token.write(l2_token_address);
-            self.emit(Event::L2TokenSet(L2TokenSet { l2_token_address }));
+            let previous_hash = self.erc20_class_hash.read();
+            self.erc20_class_hash.write(erc20_class_hash);
+            self
+                .emit(
+                    Event::Erc20ClassHashStored(
+                        Erc20ClassHashStored {
+                            erc20_class_hash: erc20_class_hash, previous_hash: previous_hash
+                        }
+                    )
+                );
         }
 
 
-        fn initiate_withdraw(ref self: ContractState, l1_recipient: EthAddress, amount: u256) {
+        fn initiate_withdraw(
+            ref self: ContractState, l1_recipient: EthAddress, token: EthAddress, amount: u256
+        ) {
             // Read addresses.
             let caller_address = get_caller_address();
-            let l2_token_address = self.get_l2_token_address();
+            let l2_token_address = self.get_l2_token_address(l1_token_address: token);
+            assert(l2_token_address.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
             let l1_bridge_address = self.get_l1_bridge_address();
 
             // Validate amount.
-            assert(amount != u256 { low: 0, high: 0 }, 'ZERO_WITHDRAWAL');
-            let caller_balance = IERC20Dispatcher {
-                contract_address: l2_token_address
-            }.balance_of(account: caller_address);
+            assert(amount != 0, 'ZERO_WITHDRAWAL');
+            let caller_balance = IERC20Dispatcher { contract_address: l2_token_address }
+                .balance_of(account: caller_address);
             assert(amount <= caller_balance, 'INSUFFICIENT_FUNDS');
 
             // Call burn on l2_token contract.
-            IMintableTokenDispatcher {
-                contract_address: l2_token_address
-            }.permissioned_burn(account: caller_address, :amount);
+            IMintableTokenDispatcher { contract_address: l2_token_address }
+                .permissioned_burn(account: caller_address, :amount);
 
             // Send the message.
             let mut message_payload = ArrayTrait::new();
             WITHDRAW_MESSAGE.serialize(ref message_payload);
             l1_recipient.serialize(ref message_payload);
+            token.serialize(ref message_payload);
             amount.serialize(ref message_payload);
 
-            send_message_to_l1_syscall(
+            let result = send_message_to_l1_syscall(
                 to_address: l1_bridge_address.into(), payload: message_payload.span()
             );
+            assert(result.is_ok(), 'MESSAGE_SEND_FAIILED');
             self
                 .emit(
                     Event::WithdrawInitiated(
-                        WithdrawInitiated { l1_recipient, amount, caller_address }
+                        WithdrawInitiated { l1_recipient, token, amount, caller_address }
                     )
                 );
         }
@@ -544,19 +553,14 @@ mod TokenBridge {
             self.only_upgrade_governor();
 
             let now = get_block_timestamp();
-            let upgrade_timelock = self.upgrade_delay.read();
+            let upgrade_timelock = self.get_upgrade_delay();
             let impl_key = calc_impl_key(:implementation_data);
 
             // TODO -  add an assertion that the `implementation_data.impl_hash` is declared.
 
             self.impl_activation_time.write(impl_key, now + upgrade_timelock);
 
-            self
-                .emit(
-                    Event::ImplementationAdded(
-                        ImplementationAdded { implementation_data: implementation_data }
-                    )
-                );
+            self.emit(Event::ImplementationAdded(ImplementationAdded { implementation_data }));
         }
         fn remove_implementation(ref self: ContractState, implementation_data: ImplementationData) {
             // The call is restricted to the upgrade governor.
@@ -570,9 +574,7 @@ mod TokenBridge {
                 self.impl_activation_time.write(impl_key, 0);
                 self
                     .emit(
-                        Event::ImplementationRemoved(
-                            ImplementationRemoved { implementation_data: implementation_data }
-                        )
+                        Event::ImplementationRemoved(ImplementationRemoved { implementation_data })
                     );
             }
         }
@@ -584,8 +586,7 @@ mod TokenBridge {
             assert(false == self.finalized.read(), 'FINALIZED');
 
             let now = get_block_timestamp();
-            let impl_key = calc_impl_key(:implementation_data);
-            let impl_activation_time = self.impl_activation_time.read(impl_key);
+            let impl_activation_time = self.get_impl_activation_time(:implementation_data);
 
             // Zero activation time means that this implementation & init vector combination
             // was not previously added.
@@ -596,9 +597,7 @@ mod TokenBridge {
             // We emit now so that finalize emits last (if it does).
             self
                 .emit(
-                    Event::ImplementationReplaced(
-                        ImplementationReplaced { implementation_data: implementation_data }
-                    )
+                    Event::ImplementationReplaced(ImplementationReplaced { implementation_data })
                 );
 
             // Finalize imeplementation, if needed.
@@ -614,7 +613,8 @@ mod TokenBridge {
             // TODO handle eic.
 
             // Replace the class hash.
-            starknet::replace_class_syscall(implementation_data.impl_hash);
+            let result = starknet::replace_class_syscall(implementation_data.impl_hash);
+            assert(result.is_ok(), 'REPLACE_CLASSHASH_FAILED');
         }
     }
 
@@ -774,20 +774,70 @@ mod TokenBridge {
 
     #[l1_handler]
     fn handle_deposit(
-        ref self: ContractState, from_address: felt252, account: ContractAddress, amount: u256
+        ref self: ContractState,
+        from_address: felt252,
+        account: ContractAddress,
+        token: EthAddress,
+        amount: u256
     ) {
-        // Read addresses.
-        let l2_token_address = self.get_l2_token_address();
         let l1_bridge_address = self.get_l1_bridge_address();
-
         // Verify deposit originating from the l1 bridge.
         assert(from_address == l1_bridge_address.into(), 'EXPECTED_FROM_BRIDGE_ONLY');
 
-        // Call mint on l2_token contract.
-        IMintableTokenDispatcher {
-            contract_address: l2_token_address
-        }.permissioned_mint(:account, :amount);
+        let l2_token_address = self.get_l2_token_address(l1_token_address: token);
+        assert(l2_token_address.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
 
-        self.emit(Event::DepositHandled(DepositHandled { account, amount }));
+        // Call mint on l2_token contract.
+        IMintableTokenDispatcher { contract_address: l2_token_address }
+            .permissioned_mint(:account, :amount);
+
+        self.emit(Event::DepositHandled(DepositHandled { account, token, amount }));
+    }
+
+    #[l1_handler]
+    fn handle_deploy(
+        ref self: ContractState,
+        from_address: felt252,
+        l1_token_address: EthAddress,
+        name: felt252,
+        symbol: felt252,
+        decimals: u8
+    ) {
+        let l1_bridge_address = self.get_l1_bridge_address();
+        // Verify deploy originating from the l1 bridge.
+        assert(from_address == l1_bridge_address.into(), 'EXPECTED_FROM_BRIDGE_ONLY');
+        let initial_supply = 0_u256;
+
+        let permitted_minter = get_contract_address();
+        let initial_recipient = permitted_minter;
+        let mut calldata = ArrayTrait::new();
+        name.serialize(ref calldata);
+        symbol.serialize(ref calldata);
+        decimals.serialize(ref calldata);
+        initial_supply.serialize(ref calldata);
+        initial_recipient.serialize(ref calldata);
+        permitted_minter.serialize(ref calldata);
+
+        let class_hash = self.get_erc20_class_hash();
+
+        // Deploy the contract.
+        let (l2_token_address, _) = deploy_syscall(class_hash, 0, calldata.span(), false)
+            .unwrap_syscall();
+
+        self.l1_l2_token_map.write(l1_token_address, l2_token_address);
+        self.l2_l1_token_map.write(l2_token_address, l1_token_address);
+
+        self
+            .emit(
+                Event::DeployHandled(
+                    DeployHandled {
+                        l1_token_address: l1_token_address,
+                        l2_token_address: l2_token_address,
+                        name: name,
+                        symbol: symbol,
+                        decimals: decimals
+                    }
+                )
+            );
     }
 }

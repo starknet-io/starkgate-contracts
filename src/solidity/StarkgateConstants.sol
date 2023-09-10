@@ -12,6 +12,7 @@ contract StarknetBridgeConstants {
     uint256 constant TRANSFER_FROM_STARKNET = 0;
     uint256 constant UINT256_PART_SIZE_BITS = 128;
     uint256 constant UINT256_PART_SIZE = 2**UINT256_PART_SIZE_BITS;
+    uint256 constant MAX_PENDING_DURATION = 5 days;
     string constant GOVERNANCE_TAG = "STARKWARE_DEFAULT_GOVERNANCE_INFO";
     address constant CANNOT_DEPLOY_BRIDGE = address(0x1);
 }

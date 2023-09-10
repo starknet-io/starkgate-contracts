@@ -4,10 +4,9 @@ from typing import Iterator, List, Optional, Type
 
 import pytest
 import pytest_asyncio
-from solidity.utils import load_contract
+from solidity.utils import load_contract, str_to_felt
 from starkware.starknet.business_logic.state.state_api_objects import BlockInfo
 
-from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.eth.eth_test_utils import (
     EthAccount,
     EthContract,
@@ -17,7 +16,7 @@ from starkware.eth.eth_test_utils import (
 
 from starkware.starknet.testing.starknet import Starknet
 
-from solidity.contracts import StarknetTokenBridge
+from solidity.contracts import StarknetTokenBridge, starkgate_registry, starkgate_manager
 from solidity.test_contracts import StarknetEthBridgeTester
 
 UPGRADE_DELAY = 0
@@ -84,12 +83,6 @@ async def l2_governor_address(session_starknet: Starknet) -> int:
     return await session_starknet.deploy_simple_account()
 
 
-def str_to_felt(short_text: str) -> int:
-    felt = int.from_bytes(bytes(short_text, encoding="ascii"), "big")
-    assert felt < DEFAULT_PRIME, f"{short_text} is too long"
-    return felt
-
-
 @pytest.fixture(scope="session")
 def token_decimals() -> int:
     return 6
@@ -130,6 +123,81 @@ def chain_hexes_to_bytes(hexes: List[str]) -> bytes:
 def eth_test_utils() -> Iterator[EthTestUtils]:
     with EthTestUtils.context_manager() as val:
         yield val
+
+
+@pytest.fixture(scope="session")
+def governor(eth_test_utils: EthTestUtils) -> EthContract:
+    return eth_test_utils.accounts[0]
+
+
+@pytest.fixture
+def registry_proxy(governor: EthContract) -> EthContract:
+    return deploy_proxy(governor=governor)
+
+
+@pytest.fixture
+def manager_proxy(governor: EthContract, registry_proxy: EthContract) -> EthContract:
+    assert registry_proxy  # Order enforcement.
+    return deploy_proxy(governor=governor)
+
+
+@pytest.fixture
+def bridge_proxy(governor: EthContract, manager_proxy: EthContract) -> EthContract:
+    assert manager_proxy  # Order enforcement.
+    return deploy_proxy(governor=governor)
+
+
+@pytest.fixture
+def registry_contract(
+    governor: EthContract, registry_proxy: EthContract, manager_proxy: EthContract
+) -> EthContract:
+    starkgate_registry_impl = governor.deploy(starkgate_registry)
+    init_data = chain_hexes_to_bytes([ZERO_ADDRESS, manager_proxy.address])
+    add_implementation_and_upgrade(
+        proxy=registry_proxy,
+        new_impl=starkgate_registry_impl.address,
+        init_data=init_data,
+        governor=governor,
+    )
+    return registry_proxy.replace_abi(abi=starkgate_registry_impl.abi)
+
+
+@pytest.fixture
+def manager_contract(
+    governor: EthContract,
+    registry_proxy: EthContract,
+    manager_proxy: EthContract,
+    bridge_proxy: EthContract,
+) -> EthContract:
+    starkgate_manager_impl = governor.deploy(starkgate_manager)
+    init_data = chain_hexes_to_bytes([ZERO_ADDRESS, registry_proxy.address, bridge_proxy.address])
+    add_implementation_and_upgrade(
+        proxy=manager_proxy,
+        new_impl=starkgate_manager_impl.address,
+        init_data=init_data,
+        governor=governor,
+    )
+    return manager_proxy.replace_abi(abi=starkgate_manager_impl.abi)
+
+
+@pytest.fixture
+def app_role_admin(
+    eth_test_utils: EthTestUtils, governor: EthContract, manager_contract: EthContract
+) -> EthContract:
+    manager_contract.registerAppRoleAdmin(
+        eth_test_utils.accounts[1].address, transact_args={"from": governor}
+    )
+    return eth_test_utils.accounts[1]
+
+
+@pytest.fixture
+def token_admin(
+    eth_test_utils: EthTestUtils, app_role_admin: EthContract, manager_contract: EthContract
+) -> EthContract:
+    manager_contract.registerTokenAdmin(
+        eth_test_utils.accounts[2].address, transact_args={"from": app_role_admin}
+    )
+    return eth_test_utils.accounts[2]
 
 
 class TokenBridgeWrapper(ABC):
@@ -175,21 +243,25 @@ class TokenBridgeWrapper(ABC):
         Deposit tokens into the bridge. If user isn't specified, the default user will be used.
         """
 
+    @abstractmethod
+    def token_address(self) -> str:
+        pass
+
     def withdraw(self, amount: int, user: Optional[EthAccount] = None) -> EthReceipt:
         """
         Withdraw tokens from the bridge. If user isn't specified, the default user will be used.
         """
         if user is None:
             return self.contract.withdraw.transact(
-                amount, transact_args={"from": self.default_user}
+                self.token_address(), amount, transact_args={"from": self.default_user}
             )
         else:
             return self.contract.withdraw.transact(
-                amount, user, transact_args={"from": self.default_user}
+                self.token_address(), amount, user, transact_args={"from": self.default_user}
             )
 
     def get_deposit_fee(self, receipt: EthReceipt) -> int:
-        logs = self.contract.w3_contract.events.LogDeposit().processReceipt(
+        logs = self.contract.w3_contract.events.Deposit().processReceipt(
             receipt.w3_tx_receipt
         ) + self.contract.w3_contract.events.DepositWithMessage().processReceipt(
             receipt.w3_tx_receipt
@@ -209,12 +281,17 @@ class TokenBridgeWrapper(ABC):
             user = self.default_user
 
         if message is None:
-            return self.contract.depositCancelRequest.transact(
-                amount, l2_recipient, nonce, transact_args={"from": user}
+            return self.contract.depositCancelRequest(
+                self.token_address(), amount, l2_recipient, nonce, transact_args={"from": user}
             )
         else:
-            return self.contract.depositWithMessageCancelRequest.transact(
-                amount, l2_recipient, message, nonce, transact_args={"from": user}
+            return self.contract.depositWithMessageCancelRequest(
+                self.token_address(),
+                amount,
+                l2_recipient,
+                message,
+                nonce,
+                transact_args={"from": user},
             )
 
     def deposit_reclaim(
@@ -228,12 +305,17 @@ class TokenBridgeWrapper(ABC):
         if user is None:
             user = self.default_user
         if message is None:
-            return self.contract.depositReclaim.transact(
-                amount, l2_recipient, nonce, transact_args={"from": user}
+            return self.contract.depositReclaim(
+                self.token_address(), amount, l2_recipient, nonce, transact_args={"from": user}
             )
         else:
-            return self.contract.depositWithMessageReclaim.transact(
-                amount, l2_recipient, message, nonce, transact_args={"from": user}
+            return self.contract.depositWithMessageReclaim(
+                self.token_address(),
+                amount,
+                l2_recipient,
+                message,
+                nonce,
+                transact_args={"from": user},
             )
 
     @abstractmethod
@@ -261,6 +343,7 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
     def __init__(
         self,
         mock_starknet_messaging_contract: EthContract,
+        registry_contract: EthContract,
         eth_test_utils: EthTestUtils,
     ):
         self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(TestERC20)
@@ -271,7 +354,7 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
             init_data=chain_hexes_to_bytes(
                 [
                     ZERO_ADDRESS,
-                    self.mock_erc20_contract.address,
+                    registry_contract.address,
                     mock_starknet_messaging_contract.address,
                 ]
             ),
@@ -280,6 +363,9 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         INITIAL_BALANCE = 10**20
         for account in (self.default_user, self.non_default_user):
             self.set_account_balance(account=account, amount=INITIAL_BALANCE)
+
+    def token_address(self) -> str:
+        return self.mock_erc20_contract.address
 
     def deposit(
         self,
@@ -296,12 +382,14 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         )
         if message is None:
             return self.contract.deposit(
+                self.token_address(),
                 amount,
                 l2_recipient,
                 transact_args={"from": user, "value": fee},
             )
         else:
             return self.contract.depositWithMessage(
+                self.token_address(),
                 amount,
                 l2_recipient,
                 message,
@@ -336,16 +424,20 @@ class EthBridgeWrapper(TokenBridgeWrapper):
     def __init__(
         self,
         mock_starknet_messaging_contract: EthContract,
+        registry_contract: EthContract,
         eth_test_utils: EthTestUtils,
     ):
         super().__init__(
             compiled_bridge_contract=StarknetEthBridgeTester,
             eth_test_utils=eth_test_utils,
             init_data=chain_hexes_to_bytes(
-                [ZERO_ADDRESS, ZERO_ADDRESS, mock_starknet_messaging_contract.address]
+                [ZERO_ADDRESS, registry_contract.address, mock_starknet_messaging_contract.address]
             ),
         )
         self.eth_test_utils = eth_test_utils
+
+    def token_address(self) -> str:
+        return ZERO_ADDRESS
 
     def deposit(
         self,
@@ -360,12 +452,14 @@ class EthBridgeWrapper(TokenBridgeWrapper):
 
         if message is None:
             return self.contract.deposit(
+                self.token_address(),
                 amount,
                 l2_recipient,
                 transact_args={"from": user, "value": amount + fee},
             )
         else:
             return self.contract.depositWithMessage.transact(
+                self.token_address(),
                 amount,
                 l2_recipient,
                 message,

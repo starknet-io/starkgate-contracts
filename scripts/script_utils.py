@@ -80,6 +80,10 @@ def color_print(
     print(f"\033[{bold}{additional}{bg}{color}m{message}\033[m", file=file)
 
 
+def get_parent_branch():
+    return open(os.path.join(os.path.dirname(__file__), "parent_branch.txt")).read().strip()
+
+
 def create_grep_pipe_command(extensions):
     if extensions is None:
         return ""
@@ -88,6 +92,14 @@ def create_grep_pipe_command(extensions):
 
 def git_files(extensions=None) -> List[str]:
     return get_files("git ls-tree -r --name-only HEAD", extensions)
+
+
+def changed_files(extensions=None, with_excluded_files=False) -> List[str]:
+    return get_files(
+        f"git diff --name-only $(git merge-base origin/{get_parent_branch()} HEAD)",
+        extensions=extensions,
+        with_excluded_files=with_excluded_files,
+    )
 
 
 def get_files(git_cmd: str, extensions, with_excluded_files=False, cwd=None) -> List[str]:

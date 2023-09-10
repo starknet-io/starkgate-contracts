@@ -6,29 +6,47 @@ import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
 abstract contract StarknetTokenStorage {
     // Random storage slot tags.
-    string internal constant BRIDGED_TOKEN_TAG = "STARKNET_ERC20_TOKEN_BRIDGE_TOKEN_ADDRESS";
     string internal constant L2_TOKEN_TAG = "STARKNET_TOKEN_BRIDGE_L2_TOKEN_CONTRACT";
-    string internal constant MAX_DEPOSIT_TAG = "STARKNET_TOKEN_BRIDGE_MAX_DEPOSIT";
-    string internal constant MAX_TOTAL_BALANCE_TAG = "STARKNET_TOKEN_BRIDGE_MAX_TOTAL_BALANCE";
+    string internal constant MANAGER_TAG = "STARKNET_TOKEN_BRIDGE_MANAGER_SLOT_TAG";
     string internal constant MESSAGING_CONTRACT_TAG = "STARKNET_TOKEN_BRIDGE_MESSAGING_CONTRACT";
     string internal constant DEPOSITOR_ADDRESSES_TAG = "STARKNET_TOKEN_BRIDGE_DEPOSITOR_ADDRESSES";
     string internal constant BRIDGE_IS_ACTIVE_TAG = "STARKNET_TOKEN_BRIDGE_IS_ACTIVE";
 
+    enum TokenStatus {
+        Unknown,
+        Pending,
+        Active,
+        Deactivated
+    }
+
+    struct TokenSettings {
+        TokenStatus tokenStatus;
+        bytes32 deploymentMsgHash;
+        uint256 pendingDeploymentExpiration;
+        uint256 maxTotalBalance;
+    }
+
+    // Slot = Web3.keccak(text="TokenSettings_Storage_Slot").
+    bytes32 constant tokenSettingsSlot =
+        0xc59c20aaa96597268f595db30ec21108a505370e3266ed3a6515637f16b8b689;
+
+    function tokenSettings()
+        internal
+        pure
+        returns (mapping(address => TokenSettings) storage _tokenSettings)
+    {
+        assembly {
+            _tokenSettings.slot := tokenSettingsSlot
+        }
+    }
+
     // Storage Getters.
-    function bridgedToken() internal view returns (address) {
-        return NamedStorage.getAddressValue(BRIDGED_TOKEN_TAG);
+    function manager() internal view returns (address) {
+        return NamedStorage.getAddressValue(MANAGER_TAG);
     }
 
     function l2TokenBridge() internal view returns (uint256) {
         return NamedStorage.getUintValue(L2_TOKEN_TAG);
-    }
-
-    function maxDeposit() public view returns (uint256) {
-        return NamedStorage.getUintValue(MAX_DEPOSIT_TAG);
-    }
-
-    function maxTotalBalance() public view returns (uint256) {
-        return NamedStorage.getUintValue(MAX_TOTAL_BALANCE_TAG);
     }
 
     function messagingContract() internal view returns (IStarknetMessaging) {
@@ -44,20 +62,12 @@ abstract contract StarknetTokenStorage {
     }
 
     // Storage Setters.
-    function bridgedToken(address contract_) internal {
-        NamedStorage.setAddressValueOnce(BRIDGED_TOKEN_TAG, contract_);
+    function setManager(address contract_) internal {
+        NamedStorage.setAddressValueOnce(MANAGER_TAG, contract_);
     }
 
     function l2TokenBridge(uint256 value) internal {
         NamedStorage.setUintValueOnce(L2_TOKEN_TAG, value);
-    }
-
-    function maxDeposit(uint256 value) internal {
-        NamedStorage.setUintValue(MAX_DEPOSIT_TAG, value);
-    }
-
-    function maxTotalBalance(uint256 value) internal {
-        NamedStorage.setUintValue(MAX_TOTAL_BALANCE_TAG, value);
     }
 
     function messagingContract(address contract_) internal {

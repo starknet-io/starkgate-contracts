@@ -1,2 +1,3 @@
 [crate_roots]
 src = "cairo"
+openzeppelin = "openzeppelin"

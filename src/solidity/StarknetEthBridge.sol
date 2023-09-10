@@ -7,20 +7,26 @@ import "src/solidity/StarknetTokenBridge.sol";
 contract StarknetEthBridge is StarknetTokenBridge {
     using Addresses for address;
 
-    function isTokenContractRequired() internal pure override returns (bool) {
-        return false;
-    }
-
-    function acceptDeposit(uint256 amount) internal override returns (uint256) {
+    function acceptDeposit(
+        address, /*token*/
+        uint256 amount
+    ) internal override returns (uint256) {
         // Make sure msg.value is enough to cover amount. The remaining value is fee.
         require(msg.value >= amount, "INSUFFICIENT_VALUE");
         uint256 fee = msg.value - amount;
         // The msg.value was already credited to this contract. Fee will be passed to StarkNet.
-        require(address(this).balance - fee <= maxTotalBalance(), "MAX_BALANCE_EXCEEDED");
+        require(
+            address(this).balance - fee <= tokenSettings()[address(0x0)].maxTotalBalance,
+            "MAX_BALANCE_EXCEEDED"
+        );
         return fee;
     }
 
-    function transferOutFunds(uint256 amount, address recipient) internal override {
+    function transferOutFunds(
+        address, /*token*/
+        uint256 amount,
+        address recipient
+    ) internal override {
         recipient.performEthTransfer(amount);
     }
 

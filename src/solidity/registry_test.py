@@ -1,95 +1,12 @@
 import pytest
 
-from starkware.eth.eth_test_utils import EthContract, EthTestUtils, EthRevertException
-from solidity.conftest import (
-    ZERO_ADDRESS,
-    Proxy,
-    add_implementation_and_upgrade,
-    deploy_proxy,
-    chain_hexes_to_bytes,
-)
-from solidity.contracts import starkgate_registry, starkgate_manager
+from starkware.eth.eth_test_utils import EthContract, EthRevertException
 
 CONTRACT_ADDRESS = "0x0000000000000000000000000000000000000003"
 CONTRACT_ADDRESS_2 = "0x0000000000000000000000000000000000000005"
 CONTRACT_ADDRESS_3 = "0x0000000000000000000000000000000000000007"
 CONTRACTS = [CONTRACT_ADDRESS, CONTRACT_ADDRESS_2, CONTRACT_ADDRESS_3]
 CANNOT_DEPLOY_BRIDGE = "0x0000000000000000000000000000000000000001"
-
-
-@pytest.fixture
-def governor(eth_test_utils: EthTestUtils) -> EthContract:
-    return eth_test_utils.accounts[0]
-
-
-@pytest.fixture
-def registry_proxy(governor: EthContract) -> EthContract:
-    return deploy_proxy(governor=governor)
-
-
-@pytest.fixture
-def manager_proxy(governor: EthContract, registry_proxy: EthContract) -> EthContract:
-    assert registry_proxy  # Order enforcement.
-    return deploy_proxy(governor=governor)
-
-
-@pytest.fixture
-def bridge_proxy(governor: EthContract, manager_proxy: EthContract) -> EthContract:
-    assert manager_proxy  # Order enforcement.
-    return deploy_proxy(governor=governor)
-
-
-@pytest.fixture
-def registry_contract(
-    governor: EthContract, registry_proxy: EthContract, manager_proxy: EthContract
-) -> EthContract:
-    starkgate_registry_impl = governor.deploy(starkgate_registry)
-    init_data = chain_hexes_to_bytes([ZERO_ADDRESS, manager_proxy.address])
-    add_implementation_and_upgrade(
-        proxy=registry_proxy,
-        new_impl=starkgate_registry_impl.address,
-        init_data=init_data,
-        governor=governor,
-    )
-    return registry_proxy.replace_abi(abi=starkgate_registry_impl.abi)
-
-
-@pytest.fixture
-def manager_contract(
-    governor: EthContract,
-    registry_proxy: EthContract,
-    manager_proxy: EthContract,
-    bridge_proxy: EthContract,
-) -> EthContract:
-    starkgate_manager_impl = governor.deploy(starkgate_manager)
-    init_data = chain_hexes_to_bytes([ZERO_ADDRESS, registry_proxy.address, bridge_proxy.address])
-    add_implementation_and_upgrade(
-        proxy=manager_proxy,
-        new_impl=starkgate_manager_impl.address,
-        init_data=init_data,
-        governor=governor,
-    )
-    return manager_proxy.replace_abi(abi=starkgate_manager_impl.abi)
-
-
-@pytest.fixture
-def app_role_admin(
-    eth_test_utils: EthTestUtils, governor: EthContract, manager_contract: EthContract
-) -> EthContract:
-    manager_contract.registerAppRoleAdmin(
-        eth_test_utils.accounts[1].address, transact_args={"from": governor}
-    )
-    return eth_test_utils.accounts[1]
-
-
-@pytest.fixture
-def token_admin(
-    eth_test_utils: EthTestUtils, app_role_admin: EthContract, manager_contract: EthContract
-) -> EthContract:
-    manager_contract.registerTokenAdmin(
-        eth_test_utils.accounts[2].address, transact_args={"from": app_role_admin}
-    )
-    return eth_test_utils.accounts[2]
 
 
 @pytest.fixture

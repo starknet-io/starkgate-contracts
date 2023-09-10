@@ -4,32 +4,6 @@ use option::OptionTrait;
 
 use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
 
-// TODO delete SpanPartialEq once there's a built-in implementation of PartialEq<Span<felt252>>.
-impl SpanPartialEq of PartialEq<Span<felt252>> {
-    fn eq(lhs: @Span<felt252>, rhs: @Span<felt252>) -> bool {
-        let mut lhs = *lhs;
-        let mut rhs = *rhs;
-        if lhs.len() != rhs.len() {
-            return false;
-        }
-        loop {
-            match lhs.pop_front() {
-                Option::Some(x) => {
-                    if x != rhs.pop_front().unwrap() {
-                        break false;
-                    }
-                },
-                Option::None(()) => {
-                    break true;
-                },
-            };
-        }
-    }
-    fn ne(lhs: @Span<felt252>, rhs: @Span<felt252>) -> bool {
-        !(lhs == rhs)
-    }
-}
-
 #[derive(Copy, Drop, Serde, PartialEq)]
 struct ImplementationData {
     impl_hash: ClassHash,

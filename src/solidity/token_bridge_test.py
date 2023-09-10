@@ -40,10 +40,14 @@ def mock_starknet_messaging_contract(eth_test_utils: EthTestUtils) -> EthContrac
 
 @pytest.fixture(params=[ERC20BridgeWrapper, EthBridgeWrapper])
 def token_bridge_wrapper(
-    request, mock_starknet_messaging_contract: EthContract, eth_test_utils: EthTestUtils
+    request,
+    mock_starknet_messaging_contract: EthContract,
+    eth_test_utils: EthTestUtils,
+    registry_contract: EthContract,
 ) -> TokenBridgeWrapper:
     return request.param(
         mock_starknet_messaging_contract=mock_starknet_messaging_contract,
+        registry_contract=registry_contract,
         eth_test_utils=eth_test_utils,
     )
 
@@ -58,8 +62,9 @@ def setup_contracts(
     """
     token_bridge_wrapper.set_bridge_balance(initial_bridge_balance)
     token_bridge_wrapper.contract.setL2TokenBridge.transact(L2_TOKEN_CONTRACT)
-    token_bridge_wrapper.contract.setMaxTotalBalance.transact(MAX_UINT)
-    token_bridge_wrapper.contract.setMaxDeposit.transact(MAX_UINT)
+    token_bridge_wrapper.contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(), MAX_UINT
+    )
 
 
 def test_selectors():
@@ -97,24 +102,22 @@ def test_governance(token_bridge_wrapper: TokenBridgeWrapper):
             L2_TOKEN_CONTRACT, transact_args={"from": non_default_user}
         )
     with pytest.raises(EthRevertException, match="ONLY_GOVERNANCE"):
-        bridge_contract.setMaxTotalBalance.call(MAX_UINT, transact_args={"from": non_default_user})
-    with pytest.raises(EthRevertException, match="ONLY_GOVERNANCE"):
-        bridge_contract.setMaxDeposit.call(MAX_UINT, transact_args={"from": non_default_user})
+        bridge_contract.setMaxTotalBalance(
+            token_bridge_wrapper.token_address(), MAX_UINT, transact_args={"from": non_default_user}
+        )
 
     bridge_contract.setL2TokenBridge.transact(
         L2_TOKEN_CONTRACT, transact_args={"from": default_user}
     )
-    bridge_contract.setMaxTotalBalance.transact(MAX_UINT, transact_args={"from": default_user})
-    bridge_contract.setMaxDeposit.transact(MAX_UINT, transact_args={"from": default_user})
+    bridge_contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(), MAX_UINT, transact_args={"from": default_user}
+    )
 
 
 def test_deposit_l2_token_contract_not_set(token_bridge_wrapper: TokenBridgeWrapper):
     default_user = token_bridge_wrapper.default_user
-    token_bridge_wrapper.contract.setMaxTotalBalance.transact(
-        MAX_UINT, transact_args={"from": default_user}
-    )
-    token_bridge_wrapper.contract.setMaxDeposit.transact(
-        MAX_UINT, transact_args={"from": default_user}
+    token_bridge_wrapper.contract.setMaxTotalBalance(
+        token_bridge_wrapper.token_address(), MAX_UINT, transact_args={"from": default_user}
     )
     with pytest.raises(EthRevertException, match="NOT_ACTIVE_YET"):
         token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT)
@@ -197,6 +200,7 @@ def test_positive_flow(
         [
             WITHDRAW,
             int(default_user.address, 16),
+            int(token_bridge_wrapper.token_address(), 16),
             WITHDRAW_AMOUNT % 2**128,
             WITHDRAW_AMOUNT // 2**128,
         ],
@@ -214,7 +218,7 @@ def test_positive_flow(
 
 
 def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
-    deposit_filter = token_bridge_wrapper.contract.w3_contract.events.LogDeposit.createFilter(
+    deposit_filter = token_bridge_wrapper.contract.w3_contract.events.Deposit.createFilter(
         fromBlock="latest"
     )
 
@@ -224,7 +228,7 @@ def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
         )
     )
 
-    withdrawal_filter = token_bridge_wrapper.contract.w3_contract.events.LogWithdrawal.createFilter(
+    withdrawal_filter = token_bridge_wrapper.contract.w3_contract.events.Withdrawal.createFilter(
         fromBlock="latest"
     )
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
@@ -233,6 +237,7 @@ def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
     assert dict(deposit_filter.get_new_entries()[0].args) == dict(
         sender=token_bridge_wrapper.default_user.address,
         amount=HALF_DEPOSIT_AMOUNT,
+        token=token_bridge_wrapper.token_address(),
         l2Recipient=L2_RECIPIENT,
         nonce=0,
         fee=fee,
@@ -244,6 +249,7 @@ def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
 
     assert dict(deposit_with_message_filter.get_new_entries()[0].args) == dict(
         sender=token_bridge_wrapper.default_user.address,
+        token=token_bridge_wrapper.token_address(),
         amount=HALF_DEPOSIT_AMOUNT,
         l2Recipient=L2_RECIPIENT,
         nonce=1,
@@ -257,7 +263,7 @@ def test_deposit_events(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
 def test_withdraw_events(
     token_bridge_wrapper: TokenBridgeWrapper, mock_starknet_messaging_contract
 ):
-    deposit_filter = token_bridge_wrapper.contract.w3_contract.events.LogDeposit.createFilter(
+    deposit_filter = token_bridge_wrapper.contract.w3_contract.events.Deposit.createFilter(
         fromBlock="latest"
     )
 
@@ -266,7 +272,7 @@ def test_withdraw_events(
             fromBlock="latest"
         )
     )
-    withdrawal_filter = token_bridge_wrapper.contract.w3_contract.events.LogWithdrawal.createFilter(
+    withdrawal_filter = token_bridge_wrapper.contract.w3_contract.events.Withdrawal.createFilter(
         fromBlock="latest"
     )
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
@@ -277,6 +283,7 @@ def test_withdraw_events(
         [
             WITHDRAW,
             int(token_bridge_wrapper.default_user.address, 16),
+            int(token_bridge_wrapper.token_address(), 16),
             WITHDRAW_AMOUNT % 2**128,
             WITHDRAW_AMOUNT // 2**128,
         ],
@@ -286,6 +293,7 @@ def test_withdraw_events(
 
     assert dict(withdrawal_filter.get_new_entries()[0].args) == dict(
         recipient=token_bridge_wrapper.default_user.address,
+        token=token_bridge_wrapper.token_address(),
         amount=WITHDRAW_AMOUNT,
     )
     assert len(deposit_filter.get_new_entries()) == 0
@@ -294,9 +302,8 @@ def test_withdraw_events(
 
 def test_set_values_events(token_bridge_wrapper: TokenBridgeWrapper):
     w3_events = token_bridge_wrapper.contract.w3_contract.events
-    l2_token_bridge_filter = w3_events.LogSetL2TokenBridge.createFilter(fromBlock="latest")
-    max_total_balance_filter = w3_events.LogSetMaxTotalBalance.createFilter(fromBlock="latest")
-    max_deposit_filter = w3_events.LogSetMaxDeposit.createFilter(fromBlock="latest")
+    l2_token_bridge_filter = w3_events.SetL2TokenBridge.createFilter(fromBlock="latest")
+    max_total_balance_filter = w3_events.SetMaxTotalBalance.createFilter(fromBlock="latest")
 
     bridge_contract = token_bridge_wrapper.contract
     default_user = token_bridge_wrapper.default_user
@@ -304,10 +311,12 @@ def test_set_values_events(token_bridge_wrapper: TokenBridgeWrapper):
         L2_TOKEN_CONTRACT, transact_args={"from": default_user}
     )
     assert dict(l2_token_bridge_filter.get_new_entries()[0].args) == dict(value=L2_TOKEN_CONTRACT)
-    bridge_contract.setMaxTotalBalance.transact(1, transact_args={"from": default_user})
-    assert dict(max_total_balance_filter.get_new_entries()[0].args) == dict(value=1)
-    bridge_contract.setMaxDeposit.transact(2, transact_args={"from": default_user})
-    assert dict(max_deposit_filter.get_new_entries()[0].args) == dict(value=2)
+    bridge_contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(), 1, transact_args={"from": default_user}
+    )
+    assert dict(max_total_balance_filter.get_new_entries()[0].args) == dict(
+        token=token_bridge_wrapper.token_address(), value=1
+    )
 
 
 def test_deposit_message_sent_consumed(
@@ -325,6 +334,7 @@ def test_deposit_message_sent_consumed(
         l1_handler_selector=HANDLE_DEPOSIT_SELECTOR,
         payload=[
             L2_RECIPIENT,
+            int(token_bridge_wrapper.token_address(), 16),
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
         ],
@@ -337,6 +347,7 @@ def test_deposit_message_sent_consumed(
         l1_handler_selector=HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
         payload=[
             L2_RECIPIENT,
+            int(token_bridge_wrapper.token_address(), 16),
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
             *MESSAGE,
@@ -392,6 +403,7 @@ def test_withdraw_message_consumed(
         payload=[
             WITHDRAW,
             int(token_bridge_wrapper.default_user.address, 16),
+            int(token_bridge_wrapper.token_address(), 16),
             WITHDRAW_AMOUNT % 2**128,
             WITHDRAW_AMOUNT // 2**128,
         ],
@@ -413,13 +425,13 @@ def test_withdraw_from_another_address(
     mock_starknet_messaging_contract,
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-
     mock_starknet_messaging_contract.mockSendMessageFromL2.transact(
         L2_TOKEN_CONTRACT,
         int(token_bridge_wrapper.contract.address, 16),
         [
             WITHDRAW,
             int(token_bridge_wrapper.non_default_user.address, 16),
+            int(token_bridge_wrapper.token_address(), 16),
             WITHDRAW_AMOUNT % 2**128,
             WITHDRAW_AMOUNT // 2**128,
         ],
@@ -504,6 +516,7 @@ def test_deposit_invalid_l2_recipient(token_bridge_wrapper: TokenBridgeWrapper, 
 def test_deposit_max_balance_almost_exceeded(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     token_bridge_wrapper.contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(),
         INITIAL_BRIDGE_BALANCE + DEPOSIT_AMOUNT,
         transact_args={"from": token_bridge_wrapper.default_user},
     )
@@ -515,6 +528,7 @@ def test_deposit_with_message_max_balance_almost_exceeded(
 ):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     token_bridge_wrapper.contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(),
         INITIAL_BRIDGE_BALANCE + DEPOSIT_AMOUNT,
         transact_args={"from": token_bridge_wrapper.default_user},
     )
@@ -526,46 +540,13 @@ def test_deposit_with_message_max_balance_almost_exceeded(
 def test_deposit_max_balance_exceeded(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     token_bridge_wrapper.contract.setMaxTotalBalance.transact(
+        token_bridge_wrapper.token_address(),
         INITIAL_BRIDGE_BALANCE + DEPOSIT_AMOUNT - 1,
         transact_args={"from": token_bridge_wrapper.default_user},
     )
     with pytest.raises(EthRevertException, match="MAX_BALANCE_EXCEEDED"):
         token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
     with pytest.raises(EthRevertException, match="MAX_BALANCE_EXCEEDED"):
-        token_bridge_wrapper.deposit(
-            amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee, message=MESSAGE
-        )
-
-
-def test_deposit_amount_almost_exceeded(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
-    setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    token_bridge_wrapper.contract.setMaxDeposit.transact(
-        DEPOSIT_AMOUNT, transact_args={"from": token_bridge_wrapper.default_user}
-    )
-    token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
-
-
-def test_deposit_with_message_amount_almost_exceeded(
-    token_bridge_wrapper: TokenBridgeWrapper, fee: int
-):
-    setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    token_bridge_wrapper.contract.setMaxDeposit.transact(
-        DEPOSIT_AMOUNT, transact_args={"from": token_bridge_wrapper.default_user}
-    )
-    token_bridge_wrapper.deposit(
-        amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee, message=MESSAGE
-    )
-
-
-def test_deposit_amount_exceeded(token_bridge_wrapper: TokenBridgeWrapper, fee: int):
-    setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    token_bridge_wrapper.contract.setMaxDeposit.transact(
-        DEPOSIT_AMOUNT - 1, transact_args={"from": token_bridge_wrapper.default_user}
-    )
-    with pytest.raises(EthRevertException, match="TRANSFER_TO_STARKNET_AMOUNT_EXCEEDED"):
-        token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
-
-    with pytest.raises(EthRevertException, match="TRANSFER_TO_STARKNET_AMOUNT_EXCEEDED"):
         token_bridge_wrapper.deposit(
             amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee, message=MESSAGE
         )
@@ -690,13 +671,14 @@ def test_cancel_deposit(
         nonce=0,
     )
 
-    deposit_cancel_event = bridge.get_events(tx=tx_receipt, name="LogDepositCancelRequest")[-1]
+    deposit_cancel_event = bridge.get_events(tx=tx_receipt, name="DepositCancelRequest")[-1]
     msg_cancel_req_ev = mock_starknet_messaging_contract.get_events(
         tx=tx_receipt,
         name="MessageToL2CancellationStarted",
     )[-1]
 
     assert deposit_cancel_event == {
+        "token": token_bridge_wrapper.token_address(),
         "sender": _sender,
         "amount": DEPOSIT_AMOUNT,
         "l2Recipient": L2_RECIPIENT,
@@ -707,7 +689,7 @@ def test_cancel_deposit(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_SELECTOR,
-        "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
+        "payload": [L2_RECIPIENT, int(token_bridge_wrapper.token_address(), 16), DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
 
@@ -733,13 +715,14 @@ def test_cancel_deposit(
         nonce=0,
     )
 
-    reclaim_event = bridge.get_events(tx=tx_receipt, name="LogDepositReclaimed")[-1]
+    reclaim_event = bridge.get_events(tx=tx_receipt, name="DepositReclaimed")[-1]
     msg_cancel_ev = mock_starknet_messaging_contract.get_events(
         tx=tx_receipt, name="MessageToL2Canceled"
     )[-1]
 
     assert reclaim_event == {
         "sender": _sender,
+        "token": token_bridge_wrapper.token_address(),
         "amount": DEPOSIT_AMOUNT,
         "l2Recipient": L2_RECIPIENT,
         "nonce": 0,
@@ -749,7 +732,7 @@ def test_cancel_deposit(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_SELECTOR,
-        "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
+        "payload": [L2_RECIPIENT, int(token_bridge_wrapper.token_address(), 16), DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
 
@@ -803,6 +786,7 @@ def test_cancel_deposit_with_message(
 
     assert deposit_cancel_event == {
         "sender": _sender,
+        "token": token_bridge_wrapper.token_address(),
         "amount": DEPOSIT_AMOUNT,
         "l2Recipient": L2_RECIPIENT,
         "message": MESSAGE,
@@ -813,7 +797,13 @@ def test_cancel_deposit_with_message(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-        "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0, *MESSAGE],
+        "payload": [
+            L2_RECIPIENT,
+            int(token_bridge_wrapper.token_address(), 16),
+            DEPOSIT_AMOUNT,
+            0,
+            *MESSAGE,
+        ],
         "nonce": 0,
     }
 
@@ -848,6 +838,7 @@ def test_cancel_deposit_with_message(
 
     assert reclaim_event == {
         "sender": _sender,
+        "token": token_bridge_wrapper.token_address(),
         "amount": DEPOSIT_AMOUNT,
         "l2Recipient": L2_RECIPIENT,
         "message": MESSAGE,
@@ -858,7 +849,13 @@ def test_cancel_deposit_with_message(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-        "payload": [L2_RECIPIENT, DEPOSIT_AMOUNT, 0, *MESSAGE],
+        "payload": [
+            L2_RECIPIENT,
+            int(token_bridge_wrapper.token_address(), 16),
+            DEPOSIT_AMOUNT,
+            0,
+            *MESSAGE,
+        ],
         "nonce": 0,
     }
 
