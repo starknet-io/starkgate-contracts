@@ -15,12 +15,34 @@ from starkware.eth.eth_test_utils import (
 )
 
 from starkware.starknet.testing.starknet import Starknet
-
+from starkware.starknet.testing.contracts import MockStarknetMessaging
 from solidity.contracts import StarknetTokenBridge, starkgate_registry, starkgate_manager
-from solidity.test_contracts import StarknetEthBridgeTester
+from solidity.test_contracts import StarknetEthBridgeTester, StarknetTokenBridgeTester
+
+# TokenStatus
+UNKNOWN = 0
+PENDING = 1
+ACTIVE = 2
+DEACTIVATED = 3
+
+HANDLE_DEPOSIT_SELECTOR = (
+    1285101517810983806491589552491143496277809242732141897358598292095611420389
+)
+HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR = (
+    247015267890530308727663503380700973440961674638638362173641612402089762826
+)
+
+HANDLE_TOKEN_ENROLLMENT_SELECTOR = (
+    1184692638857115690182679659118514803031381598805235252252646202298848532642
+)
+
 
 UPGRADE_DELAY = 0
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+MESSAGE_CANCEL_DELAY = 1000
+INITIAL_BALANCE = 10**20
+L2_TOKEN_CONTRACT = 42
+MAX_UINT = 2**256 - 1
 
 
 @pytest.fixture(scope="session")
@@ -62,7 +84,7 @@ async def session_starknet() -> Starknet:
     return starknet
 
 
-def deploy_proxy(governor: EthContract) -> EthContract:
+def deploy_proxy(governor: EthAccount) -> EthContract:
     proxy = governor.deploy(Proxy, UPGRADE_DELAY)
     proxy.registerUpgradeGovernor(governor.address)
     return proxy
@@ -126,30 +148,48 @@ def eth_test_utils() -> Iterator[EthTestUtils]:
 
 
 @pytest.fixture(scope="session")
-def governor(eth_test_utils: EthTestUtils) -> EthContract:
+def governor(eth_test_utils: EthTestUtils) -> EthAccount:
+    eth_test_utils.set_account_balance(address=eth_test_utils.accounts[0].address, balance=10**18)
     return eth_test_utils.accounts[0]
 
 
 @pytest.fixture
-def registry_proxy(governor: EthContract) -> EthContract:
+def mock_erc20_contract(governor: EthAccount) -> EthContract:
+    erc20_contract = governor.deploy(TestERC20)
+    erc20_contract.setBalance.transact(governor.address, INITIAL_BALANCE)
+    return erc20_contract
+
+
+@pytest.fixture
+def erc20_contract_address_list(governor: EthAccount) -> list[str]:
+    return [governor.deploy(TestERC20).address for _ in range(3)]
+
+
+@pytest.fixture
+def messaging_contract(governor: EthAccount) -> EthContract:
+    return governor.deploy(MockStarknetMessaging, MESSAGE_CANCEL_DELAY)
+
+
+@pytest.fixture
+def registry_proxy(governor: EthAccount) -> EthContract:
     return deploy_proxy(governor=governor)
 
 
 @pytest.fixture
-def manager_proxy(governor: EthContract, registry_proxy: EthContract) -> EthContract:
+def manager_proxy(governor: EthAccount, registry_proxy: EthContract) -> EthContract:
     assert registry_proxy  # Order enforcement.
     return deploy_proxy(governor=governor)
 
 
 @pytest.fixture
-def bridge_proxy(governor: EthContract, manager_proxy: EthContract) -> EthContract:
+def bridge_proxy(governor: EthAccount, manager_proxy: EthContract) -> EthContract:
     assert manager_proxy  # Order enforcement.
     return deploy_proxy(governor=governor)
 
 
 @pytest.fixture
 def registry_contract(
-    governor: EthContract, registry_proxy: EthContract, manager_proxy: EthContract
+    governor: EthAccount, registry_proxy: EthContract, manager_proxy: EthContract
 ) -> EthContract:
     starkgate_registry_impl = governor.deploy(starkgate_registry)
     init_data = chain_hexes_to_bytes([ZERO_ADDRESS, manager_proxy.address])
@@ -164,7 +204,7 @@ def registry_contract(
 
 @pytest.fixture
 def manager_contract(
-    governor: EthContract,
+    governor: EthAccount,
     registry_proxy: EthContract,
     manager_proxy: EthContract,
     bridge_proxy: EthContract,
@@ -181,8 +221,34 @@ def manager_contract(
 
 
 @pytest.fixture
+def bridge_contract(
+    governor: EthAccount,
+    bridge_proxy: EthContract,
+    manager_contract: EthContract,
+    messaging_contract: EthContract,
+) -> EthContract:
+    starkgate_bridge_impl = governor.deploy(StarknetTokenBridge)
+    init_data = chain_hexes_to_bytes(
+        [
+            ZERO_ADDRESS,
+            manager_contract.address,
+            messaging_contract.address,
+        ]
+    )
+    add_implementation_and_upgrade(
+        proxy=bridge_proxy,
+        new_impl=starkgate_bridge_impl.address,
+        init_data=init_data,
+        governor=governor,
+    )
+    bridge = bridge_proxy.replace_abi(abi=starkgate_bridge_impl.abi)
+    bridge.setL2TokenBridge(L2_TOKEN_CONTRACT, transact_args={"from": governor})
+    return bridge
+
+
+@pytest.fixture
 def app_role_admin(
-    eth_test_utils: EthTestUtils, governor: EthContract, manager_contract: EthContract
+    eth_test_utils: EthTestUtils, governor: EthAccount, manager_contract: EthContract
 ) -> EthContract:
     manager_contract.registerAppRoleAdmin(
         eth_test_utils.accounts[1].address, transact_args={"from": governor}
@@ -342,23 +408,24 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
 
     def __init__(
         self,
-        mock_starknet_messaging_contract: EthContract,
+        messaging_contract: EthContract,
         registry_contract: EthContract,
         eth_test_utils: EthTestUtils,
     ):
         self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(TestERC20)
 
         super().__init__(
-            compiled_bridge_contract=StarknetTokenBridge,
+            compiled_bridge_contract=StarknetTokenBridgeTester,
             eth_test_utils=eth_test_utils,
             init_data=chain_hexes_to_bytes(
                 [
                     ZERO_ADDRESS,
                     registry_contract.address,
-                    mock_starknet_messaging_contract.address,
+                    messaging_contract.address,
                 ]
             ),
         )
+        self.contract.setTokenStatus(self.mock_erc20_contract.address, ACTIVE)
 
         INITIAL_BALANCE = 10**20
         for account in (self.default_user, self.non_default_user):
@@ -423,7 +490,7 @@ class EthBridgeWrapper(TokenBridgeWrapper):
 
     def __init__(
         self,
-        mock_starknet_messaging_contract: EthContract,
+        messaging_contract: EthContract,
         registry_contract: EthContract,
         eth_test_utils: EthTestUtils,
     ):
@@ -431,9 +498,10 @@ class EthBridgeWrapper(TokenBridgeWrapper):
             compiled_bridge_contract=StarknetEthBridgeTester,
             eth_test_utils=eth_test_utils,
             init_data=chain_hexes_to_bytes(
-                [ZERO_ADDRESS, registry_contract.address, mock_starknet_messaging_contract.address]
+                [ZERO_ADDRESS, registry_contract.address, messaging_contract.address]
             ),
         )
+        self.contract.setTokenStatus(ZERO_ADDRESS, ACTIVE)
         self.eth_test_utils = eth_test_utils
 
     def token_address(self) -> str:

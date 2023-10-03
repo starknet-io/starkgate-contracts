@@ -19,7 +19,7 @@ fi
 
 
 printf "${YELLOW}Check Line Length...\n"
-scripts/line_length.py -l 110
+scripts/line_length.py
 if  [ $? -ne 0 ]; then
     exit 1
 fi

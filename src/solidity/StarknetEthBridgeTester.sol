@@ -19,4 +19,8 @@ contract StarknetEthBridgeTester is StarknetEthBridge {
     function sendEth(uint256 amount) external {
         address(msg.sender).performEthTransfer(amount);
     }
+
+    function setTokenStatus(address token, TokenStatus status) external {
+        tokenSettings()[token].tokenStatus = status;
+    }
 }

@@ -6,7 +6,10 @@ mod PermissionedERC20 {
         ContractAddress, get_caller_address, contract_address::ContractAddressZeroable,
         contract_address_const
     };
-    use super::super::{erc20_interface::IERC20, mintable_token_interface::IMintableToken};
+    use super::super::{
+        erc20_interface::IERC20, erc20_interface::IERC20CamelOnly,
+        mintable_token_interface::IMintableToken
+    };
 
 
     #[storage]
@@ -223,6 +226,26 @@ mod PermissionedERC20 {
             ref self: ContractState, spender: ContractAddress, subtracted_value: u256
         ) -> bool {
             self._decrease_allowance(spender, subtracted_value)
+        }
+    }
+
+    #[external(v0)]
+    impl ERC20CamelOnlyImpl of IERC20CamelOnly<ContractState> {
+        fn totalSupply(self: @ContractState) -> u256 {
+            PermissionedERC20::total_supply(self)
+        }
+
+        fn balanceOf(self: @ContractState, account: ContractAddress) -> u256 {
+            PermissionedERC20::balance_of(self, account)
+        }
+
+        fn transferFrom(
+            ref self: ContractState,
+            sender: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256
+        ) -> bool {
+            PermissionedERC20::transfer_from(ref self, sender, recipient, amount)
         }
     }
 }

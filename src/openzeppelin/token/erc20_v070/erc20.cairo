@@ -1,10 +1,18 @@
-// SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts for Cairo v0.7.0 (token/erc20/presets/erc20votes.cairo)
-
-/// ERC20 with the ERC20Votes extension.
+//! SPDX-License-Identifier: MIT
+//! OpenZeppelin Contracts for Cairo v0.7.0 (token/erc20/erc20.cairo)
+//!
+//! # ERC20 Contract and Implementation
+//!
+//! This ERC20 contract includes both a library and a basic preset implementation.
+//! The library is agnostic regarding how tokens are created; however,
+//! the preset implementation sets the initial supply in the constructor.
+//! A derived contract can use [_mint](_mint) to create a different supply mechanism.
 #[starknet::contract]
-mod ERC20VotesPreset {
-    use core::result::ResultTrait;
+mod ERC20 {
+    use integer::BoundedInt;
+    use openzeppelin::token::erc20::interface::IERC20;
+    use openzeppelin::token::erc20::interface::IERC20CamelOnly;
+    use src::mintable_token_interface::IMintableToken;
     use src::access_control_interface::{IAccessControl, RoleId};
     use src::roles_interface::IMinimalRoles;
     use src::roles_interface::{GOVERNANCE_ADMIN, UPGRADE_GOVERNOR};
@@ -13,24 +21,23 @@ mod ERC20VotesPreset {
         ImplementationData, IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait,
         EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION
     };
-
-    use ERC20::InternalTrait;
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
-    use starknet::syscalls::library_call_syscall;
-
+    use starknet::ContractAddress;
     use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
-    use src::mintable_token_interface::IMintableToken;
-    use openzeppelin::governance::utils::interfaces::IVotes;
-    use openzeppelin::token::erc20::ERC20;
-    use openzeppelin::token::erc20::extensions::ERC20Votes;
-    use openzeppelin::token::erc20::interface::IERC20;
-    use openzeppelin::token::erc20::interface::IERC20CamelOnly;
-    use openzeppelin::utils::cryptography::eip712_draft::EIP712;
-    use openzeppelin::utils::structs::checkpoints::Checkpoint;
+    use starknet::{get_caller_address, get_block_timestamp};
+    use starknet::syscalls::library_call_syscall;
 
     #[storage]
     struct Storage {
+        ERC20_name: felt252,
+        ERC20_symbol: felt252,
+        ERC20_decimals: u8,
+        ERC20_total_supply: u256,
+        ERC20_balances: LegacyMap<ContractAddress, u256>,
+        ERC20_allowances: LegacyMap<(ContractAddress, ContractAddress), u256>,
+
+        // --- MintableToken ---
         permitted_minter: ContractAddress,
+
         // --- Replaceability ---
         // Delay in seconds before performing an upgrade.
         upgrade_delay: u64,
@@ -40,16 +47,20 @@ mod ERC20VotesPreset {
         impl_expiration_time: LegacyMap<felt252, u64>,
         // Is the implementation finalized.
         finalized: bool,
+
         // --- Access Control ---
         // For each role id store its role admin id.
         role_admin: LegacyMap<RoleId, RoleId>,
         // For each role and address, stores true if the address has this role; otherwise, false.
         role_members: LegacyMap<(RoleId, ContractAddress), bool>,
+
     }
 
     #[event]
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     enum Event {
+        Transfer: Transfer,
+        Approval: Approval,
         // --- Replaceability ---
         #[event]
         ImplementationAdded: ImplementationAdded,
@@ -75,6 +86,27 @@ mod ERC20VotesPreset {
         UpgradeGovernorAdded: UpgradeGovernorAdded,
         #[event]
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
+    }
+
+    /// Emitted when tokens are moved from address `from` to address `to`.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct Transfer {
+        #[key]
+        from: ContractAddress,
+        #[key]
+        to: ContractAddress,
+        value: u256
+    }
+
+    /// Emitted when the allowance of a `spender` for an `owner` is set by a call
+    /// to [approve](approve). `value` is the new allowance.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct Approval {
+        #[key]
+        owner: ContractAddress,
+        #[key]
+        spender: ContractAddress,
+        value: u256
     }
 
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
@@ -153,25 +185,23 @@ mod ERC20VotesPreset {
         removed_by: ContractAddress,
     }
 
-
-    //
-    // Hooks
-    //
-
-    impl ERC20VotesHooksImpl of ERC20::ERC20HooksTrait {
-        fn _after_update(
-            ref self: ERC20::ContractState,
-            from: ContractAddress,
-            recipient: ContractAddress,
-            amount: u256
-        ) {
-            let mut unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::InternalImpl::transfer_voting_units(
-                ref unsafe_state, from, recipient, amount
-            );
-        }
+    mod ERC20Errors {
+        const APPROVE_FROM_ZERO: felt252 = 'ERC20: approve from 0';
+        const APPROVE_TO_ZERO: felt252 = 'ERC20: approve to 0';
+        const TRANSFER_FROM_ZERO: felt252 = 'ERC20: transfer from 0';
+        const TRANSFER_TO_ZERO: felt252 = 'ERC20: transfer to 0';
+        const BURN_FROM_ZERO: felt252 = 'ERC20: burn from 0';
+        const MINT_TO_ZERO: felt252 = 'ERC20: mint to 0';
     }
 
+    mod AccessErrors {
+        const INVALID_MINTER: felt252 = 'INVALID_MINTER_ADDRESS';
+        const MISSING_ROLE: felt252 = 'Caller is missing role';
+        const ZERO_ADDRESS: felt252 = 'INVALID_ACCOUNT_ADDRESS';
+    }
+
+    /// Initializes the state of the ERC20 contract. This includes setting the
+    /// initial supply of tokens as well as the recipient of the initial supply.
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -181,23 +211,16 @@ mod ERC20VotesPreset {
         initial_supply: u256,
         recipient: ContractAddress,
         permitted_minter: ContractAddress,
-        dapp_name: felt252,
-        dapp_version: felt252,
         upgrade_delay: u64,
     ) {
-        let mut eip712_state = EIP712::unsafe_new_contract_state();
-        EIP712::InternalImpl::initializer(ref eip712_state, dapp_name, dapp_version);
-
-        let mut erc20_state = ERC20::unsafe_new_contract_state();
-        ERC20::InternalImpl::initializer(ref erc20_state, name, symbol, decimals);
-        ERC20::InternalImpl::_mint::<ERC20VotesHooksImpl>(
-            ref erc20_state, recipient, initial_supply
-        );
-        assert(permitted_minter.is_non_zero(), 'INVALID_MINTER_ADDRESS');
+        self.initializer(name, symbol, decimals);
+        self._mint(recipient, initial_supply);
+        assert(permitted_minter.is_non_zero(), AccessErrors::INVALID_MINTER);
         self.permitted_minter.write(permitted_minter);
         self._initialize_roles(provisional_governance_admin: get_caller_address());
         self.upgrade_delay.write(upgrade_delay);
     }
+
 
     #[generate_trait]
     impl InternalFunctions of IInternalFunctions {
@@ -236,7 +259,7 @@ mod ERC20VotesPreset {
         // --- Access Control ---
         fn assert_only_role(self: @ContractState, role: RoleId) {
             let authorized: bool = self.has_role(:role, account: get_caller_address());
-            assert(authorized, 'Caller is missing role');
+            assert(authorized, AccessErrors::MISSING_ROLE);
         }
 
         //
@@ -296,7 +319,7 @@ mod ERC20VotesPreset {
             ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
         ) {
             if !self.has_role(:role, :account) {
-                assert(account.is_non_zero(), 'INVALID_ACCOUNT_ADDRESS');
+                assert(account.is_non_zero(), AccessErrors::ZERO_ADDRESS);
                 self.grant_role(:role, :account);
                 self.emit(event);
             }
@@ -343,13 +366,13 @@ mod ERC20VotesPreset {
     impl MintableToken of IMintableToken<ContractState> {
         fn permissioned_mint(ref self: ContractState, account: ContractAddress, amount: u256) {
             assert(get_caller_address() == self.permitted_minter.read(), 'MINTER_ONLY');
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            unsafe_state._mint::<ERC20VotesHooksImpl>(recipient: account, :amount);
+            // let mut unsafe_state = ERC20::unsafe_new_contract_state();
+            // unsafe_state._mint::<ERC20VotesHooksImpl>(recipient: account, :amount);
         }
         fn permissioned_burn(ref self: ContractState, account: ContractAddress, amount: u256) {
             assert(get_caller_address() == self.permitted_minter.read(), 'MINTER_ONLY');
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            unsafe_state._burn::<ERC20VotesHooksImpl>(:account, :amount);
+            // let mut unsafe_state = ERC20::unsafe_new_contract_state();
+            // unsafe_state._burn::<ERC20VotesHooksImpl>(:account, :amount);
         }
     }
 
@@ -359,7 +382,6 @@ mod ERC20VotesPreset {
         implementation_data.serialize(ref hash_input);
         poseidon::poseidon_hash_span(hash_input.span())
     }
-
 
     #[external(v0)]
     impl Replaceable of IReplaceable<ContractState> {
@@ -553,80 +575,114 @@ mod ERC20VotesPreset {
         }
     }
 
+
+    //
+    // External
+    //
+
     #[external(v0)]
     impl ERC20Impl of IERC20<ContractState> {
+        /// Returns the name of the token.
         fn name(self: @ContractState) -> felt252 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::name(@unsafe_state)
+            self.ERC20_name.read()
         }
 
+        /// Returns the ticker symbol of the token, usually a shorter version of the name.
         fn symbol(self: @ContractState) -> felt252 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::symbol(@unsafe_state)
+            self.ERC20_symbol.read()
         }
 
+        /// Returns the number of decimals used to get its user representation.
         fn decimals(self: @ContractState) -> u8 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::decimals(@unsafe_state)
+            self.ERC20_decimals.read()
         }
 
+        /// Returns the value of tokens in existence.
         fn total_supply(self: @ContractState) -> u256 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::total_supply(@unsafe_state)
+            self.ERC20_total_supply.read()
         }
 
+        /// Returns the amount of tokens owned by `account`.
         fn balance_of(self: @ContractState, account: ContractAddress) -> u256 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::balance_of(@unsafe_state, account)
+            self.ERC20_balances.read(account)
         }
 
+        /// Returns the remaining number of tokens that `spender` is
+        /// allowed to spend on behalf of `owner` through [transfer_from](transfer_from).
+        /// This is zero by default.
+        /// This value changes when [approve](approve) or [transfer_from](transfer_from)
+        /// are called.
         fn allowance(
             self: @ContractState, owner: ContractAddress, spender: ContractAddress
         ) -> u256 {
-            let unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::allowance(@unsafe_state, owner, spender)
+            self.ERC20_allowances.read((owner, spender))
         }
 
+        /// Moves `amount` tokens from the caller's token balance to `to`.
+        /// Emits a [Transfer](Transfer) event.
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            let sender = starknet::get_caller_address();
-            ERC20::InternalImpl::_transfer::<ERC20VotesHooksImpl>(
-                ref unsafe_state, sender, recipient, amount
-            );
+            let sender = get_caller_address();
+            self._transfer(sender, recipient, amount);
             true
         }
 
+        /// Moves `amount` tokens from `from` to `to` using the allowance mechanism.
+        /// `amount` is then deducted from the caller's allowance.
+        /// Emits a [Transfer](Transfer) event.
         fn transfer_from(
             ref self: ContractState,
             sender: ContractAddress,
             recipient: ContractAddress,
             amount: u256
         ) -> bool {
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            let caller = starknet::get_caller_address();
-            ERC20::InternalImpl::_spend_allowance(ref unsafe_state, sender, caller, amount);
-            ERC20::InternalImpl::_transfer::<ERC20VotesHooksImpl>(
-                ref unsafe_state, sender, recipient, amount
-            );
+            let caller = get_caller_address();
+            self._spend_allowance(sender, caller, amount);
+            self._transfer(sender, recipient, amount);
             true
         }
 
+        /// Sets `amount` as the allowance of `spender` over the caller’s tokens.
         fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) -> bool {
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            ERC20::ERC20Impl::approve(ref unsafe_state, spender, amount)
+            let caller = get_caller_address();
+            self._approve(caller, spender, amount);
+            true
         }
+    }
+
+    /// Increases the allowance granted from the caller to `spender` by `added_value`.
+    /// Emits an [Approval](Approval) event indicating the updated allowance.
+    #[external(v0)]
+    fn increase_allowance(
+        ref self: ContractState, spender: ContractAddress, added_value: u256
+    ) -> bool {
+        self._increase_allowance(spender, added_value)
+    }
+
+    /// Decreases the allowance granted from the caller to `spender` by `subtracted_value`.
+    /// Emits an [Approval](Approval) event indicating the updated allowance.
+    #[external(v0)]
+    fn decrease_allowance(
+        ref self: ContractState, spender: ContractAddress, subtracted_value: u256
+    ) -> bool {
+        self._decrease_allowance(spender, subtracted_value)
     }
 
     #[external(v0)]
     impl ERC20CamelOnlyImpl of IERC20CamelOnly<ContractState> {
+        /// Camel case support.
+        /// See [total_supply](total-supply).
         fn totalSupply(self: @ContractState) -> u256 {
             ERC20Impl::total_supply(self)
         }
 
+        /// Camel case support.
+        /// See [balance_of](balance_of).
         fn balanceOf(self: @ContractState, account: ContractAddress) -> u256 {
             ERC20Impl::balance_of(self, account)
         }
 
+        /// Camel case support.
+        /// See [transfer_from](transfer_from).
         fn transferFrom(
             ref self: ContractState,
             sender: ContractAddress,
@@ -637,14 +693,8 @@ mod ERC20VotesPreset {
         }
     }
 
-    #[external(v0)]
-    fn increase_allowance(
-        ref self: ContractState, spender: ContractAddress, added_value: u256
-    ) -> bool {
-        let mut unsafe_state = ERC20::unsafe_new_contract_state();
-        ERC20::InternalImpl::_increase_allowance(ref unsafe_state, spender, added_value)
-    }
-
+    /// Camel case support.
+    /// See [increase_allowance](increase_allowance).
     #[external(v0)]
     fn increaseAllowance(
         ref self: ContractState, spender: ContractAddress, addedValue: u256
@@ -652,14 +702,8 @@ mod ERC20VotesPreset {
         increase_allowance(ref self, spender, addedValue)
     }
 
-    #[external(v0)]
-    fn decrease_allowance(
-        ref self: ContractState, spender: ContractAddress, subtracted_value: u256
-    ) -> bool {
-        let mut unsafe_state = ERC20::unsafe_new_contract_state();
-        ERC20::InternalImpl::_decrease_allowance(ref unsafe_state, spender, subtracted_value)
-    }
-
+    /// Camel case support.
+    /// See [decrease_allowance](decrease_allowance).
     #[external(v0)]
     fn decreaseAllowance(
         ref self: ContractState, spender: ContractAddress, subtractedValue: u256
@@ -667,59 +711,103 @@ mod ERC20VotesPreset {
         decrease_allowance(ref self, spender, subtractedValue)
     }
 
-    #[external(v0)]
-    impl VotesImpl of IVotes<ContractState> {
-        fn get_votes(self: @ContractState, account: ContractAddress) -> u256 {
-            let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::get_votes(@unsafe_state, account)
+    //
+    // Internal
+    //
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        /// Initializes the contract by setting the token name and symbol.
+        /// To prevent reinitialization, this should only be used inside of a contract constructor.
+        fn initializer(ref self: ContractState, name: felt252, symbol: felt252, decimals: u8) {
+            self.ERC20_name.write(name);
+            self.ERC20_symbol.write(symbol);
+            self.ERC20_decimals.write(decimals);
         }
 
-        fn get_past_votes(self: @ContractState, account: ContractAddress, timepoint: u64) -> u256 {
-            let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::get_past_votes(@unsafe_state, account, timepoint)
-        }
-
-        fn get_past_total_supply(self: @ContractState, timepoint: u64) -> u256 {
-            let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::get_past_total_supply(@unsafe_state, timepoint)
-        }
-
-        fn delegates(self: @ContractState, account: ContractAddress) -> ContractAddress {
-            let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::delegates(@unsafe_state, account)
-        }
-
-        fn delegate(ref self: ContractState, delegatee: ContractAddress) {
-            let mut unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::delegate(ref unsafe_state, delegatee);
-        }
-
-        fn delegate_by_sig(
+        /// Internal method that moves an `amount` of tokens from `from` to `to`.
+        /// Emits a [Transfer](Transfer) event.
+        fn _transfer(
             ref self: ContractState,
-            delegator: ContractAddress,
-            delegatee: ContractAddress,
-            nonce: felt252,
-            expiry: u64,
-            signature: Array<felt252>
+            sender: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256
         ) {
-            let mut unsafe_state = ERC20Votes::unsafe_new_contract_state();
-            ERC20Votes::VotesImpl::delegate_by_sig(
-                ref unsafe_state, delegator, delegatee, nonce, expiry, signature
-            );
+            assert(!sender.is_zero(), ERC20Errors::TRANSFER_FROM_ZERO);
+            assert(!recipient.is_zero(), ERC20Errors::TRANSFER_TO_ZERO);
+            self.ERC20_balances.write(sender, self.ERC20_balances.read(sender) - amount);
+            self.ERC20_balances.write(recipient, self.ERC20_balances.read(recipient) + amount);
+            self.emit(Transfer { from: sender, to: recipient, value: amount });
         }
-    }
 
-    /// Get number of checkpoints for `account`.
-    #[external(v0)]
-    fn num_checkpoints(self: @ContractState, account: ContractAddress) -> u32 {
-        let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-        ERC20Votes::InternalImpl::num_checkpoints(@unsafe_state, account)
-    }
+        /// Internal method that sets `amount` as the allowance of `spender` over the
+        /// `owner`s tokens.
+        /// Emits an [Approval](Approval) event.
+        fn _approve(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
+        ) {
+            assert(!owner.is_zero(), ERC20Errors::APPROVE_FROM_ZERO);
+            assert(!spender.is_zero(), ERC20Errors::APPROVE_TO_ZERO);
+            self.ERC20_allowances.write((owner, spender), amount);
+            self.emit(Approval { owner, spender, value: amount });
+        }
 
-    /// Get the `pos`-th checkpoint for `account`.
-    #[external(v0)]
-    fn checkpoints(self: @ContractState, account: ContractAddress, pos: u32) -> Checkpoint {
-        let unsafe_state = ERC20Votes::unsafe_new_contract_state();
-        ERC20Votes::InternalImpl::checkpoints(@unsafe_state, account, pos)
+        /// Creates a `value` amount of tokens and assigns them to `account`.
+        /// Emits a [Transfer](Transfer) event with `from` set to the zero address.
+        fn _mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
+            assert(!recipient.is_zero(), ERC20Errors::MINT_TO_ZERO);
+            self.ERC20_total_supply.write(self.ERC20_total_supply.read() + amount);
+            self.ERC20_balances.write(recipient, self.ERC20_balances.read(recipient) + amount);
+            self.emit(Transfer { from: Zeroable::zero(), to: recipient, value: amount });
+        }
+
+        /// Destroys a `value` amount of tokens from `account`.
+        /// Emits a [Transfer](Transfer) event with `to` set to the zero address.
+        fn _burn(ref self: ContractState, account: ContractAddress, amount: u256) {
+            assert(!account.is_zero(), ERC20Errors::BURN_FROM_ZERO);
+            self.ERC20_total_supply.write(self.ERC20_total_supply.read() - amount);
+            self.ERC20_balances.write(account, self.ERC20_balances.read(account) - amount);
+            self.emit(Transfer { from: account, to: Zeroable::zero(), value: amount });
+        }
+
+        /// Internal method for the external [increase_allowance](increase_allowance).
+        /// Emits an [Approval](Approval) event indicating the updated allowance.
+        fn _increase_allowance(
+            ref self: ContractState, spender: ContractAddress, added_value: u256
+        ) -> bool {
+            let caller = get_caller_address();
+            self
+                ._approve(
+                    caller, spender, self.ERC20_allowances.read((caller, spender)) + added_value
+                );
+            true
+        }
+
+        /// Internal method for the external [decrease_allowance](decrease_allowance).
+        /// Emits an [Approval](Approval) event indicating the updated allowance.
+        fn _decrease_allowance(
+            ref self: ContractState, spender: ContractAddress, subtracted_value: u256
+        ) -> bool {
+            let caller = get_caller_address();
+            self
+                ._approve(
+                    caller,
+                    spender,
+                    self.ERC20_allowances.read((caller, spender)) - subtracted_value
+                );
+            true
+        }
+
+        /// Updates `owner`s allowance for `spender` based on spent `amount`.
+        /// Does not update the allowance value in case of infinite allowance.
+        /// Possibly emits an [Approval](Approval) event.
+        fn _spend_allowance(
+            ref self: ContractState, owner: ContractAddress, spender: ContractAddress, amount: u256
+        ) {
+            let current_allowance = self.ERC20_allowances.read((owner, spender));
+            if current_allowance != BoundedInt::max() {
+                self._approve(owner, spender, current_allowance - amount);
+            }
+        }
     }
 }

@@ -14,7 +14,7 @@ mod permissioned_token_test {
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
     };
     use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use super::super::test_utils::{
+    use super::super::test_utils::test_utils::{
         get_erc20_token, deploy_l2_votes_token, deploy_l2_token, get_mintable_token,
         get_l2_token_deployment_calldata
     };

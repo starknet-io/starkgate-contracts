@@ -14,7 +14,10 @@ mod token_bridge_test {
     use starknet::class_hash::{
         ClassHash, Felt252TryIntoClassHash, class_hash_const, ClassHashZeroable
     };
-    use starknet::{contract_address_const, ContractAddress, EthAddress, ContractAddressIntoFelt252};
+    use starknet::{
+        contract_address_const, ContractAddress, EthAddress, ContractAddressIntoFelt252,
+        get_block_timestamp
+    };
     use starknet::syscalls::deploy_syscall;
 
     use super::super::permissioned_erc20::PermissionedERC20;
@@ -22,26 +25,36 @@ mod token_bridge_test {
     use super::super::mintable_token_interface::{
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
     };
+    use super::super::stub_msg_receiver::StubMsgReceiver;
     use super::super::token_bridge::TokenBridge;
     use super::super::token_bridge::TokenBridge::{
         Event, L1BridgeSet, Erc20ClassHashStored, DeployHandled, WithdrawInitiated, DepositHandled,
-        ImplementationAdded, ImplementationRemoved, ImplementationReplaced, ImplementationFinalized,
-        RoleGranted, RoleRevoked, RoleAdminChanged, AppRoleAdminAdded, AppRoleAdminRemoved,
-        UpgradeGovernorAdded, UpgradeGovernorRemoved, GovernanceAdminAdded, GovernanceAdminRemoved,
-        AppGovernorAdded, AppGovernorRemoved, OperatorAdded, OperatorRemoved, TokenAdminAdded,
-        TokenAdminRemoved, APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN,
-        UPGRADE_GOVERNOR,
+        DepositWithMessageHandled, ImplementationAdded, ImplementationRemoved,
+        ImplementationReplaced, ImplementationFinalized, RoleGranted, RoleRevoked, RoleAdminChanged,
+        AppRoleAdminAdded, AppRoleAdminRemoved, UpgradeGovernorAdded, UpgradeGovernorRemoved,
+        GovernanceAdminAdded, GovernanceAdminRemoved, AppGovernorAdded, AppGovernorRemoved,
+        OperatorAdded, OperatorRemoved, TokenAdminAdded, TokenAdminRemoved, LimitWithdrawalOff,
+        LimitWithdrawalOn, SECONDS_IN_DAY, DAILY_WITHDRAW_LIMIT_PCT
     };
+    use super::super::roles_interface::{
+        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN, UPGRADE_GOVERNOR
+    };
+
+
     use super::super::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
-    use super::super::test_utils::{
+    use super::super::test_utils::test_utils::{
         caller, not_caller, initial_owner, permitted_minter, set_contract_address_as_caller,
         set_contract_address_as_not_caller, get_erc20_token, deploy_l2_token,
         pop_and_deserialize_last_event, pop_last_k_events, deserialize_event, arbitrary_event,
-        assert_role_granted_event, assert_role_revoked_event, validate_empty_event_queue
+        assert_role_granted_event, assert_role_revoked_event, validate_empty_event_queue, get_roles,
+        get_replaceable, get_access_control, set_caller_as_upgrade_governor, deploy_token_bridge,
+        DEFAULT_UPGRADE_DELAY
     };
 
+
     use super::super::replaceability_interface::{
-        ImplementationData, IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait
+        EICData, ImplementationData, IReplaceable, IReplaceableDispatcher,
+        IReplaceableDispatcherTrait
     };
     use super::super::roles_interface::{IRolesDispatcher, IRolesDispatcherTrait};
     use super::super::access_control_interface::{
@@ -51,16 +64,34 @@ mod token_bridge_test {
     const EXPECTED_CONTRACT_IDENTITY: felt252 = 'STARKGATE';
     const EXPECTED_CONTRACT_VERSION: felt252 = 2;
 
-    const DEFAULT_UPGRADE_DELAY: u64 = 12345;
 
     const DEFAULT_L1_BRIDGE_ETH_ADDRESS: felt252 = 5;
+    const DEFAULT_L1_RECIPIENT: felt252 = 12;
     const DEFAULT_L1_TOKEN_ETH_ADDRESS: felt252 = 1337;
+    const DEFAULT_DEPOSITOR_ETH_ADDRESS: felt252 = 7;
 
     const NON_DEFAULT_L1_BRIDGE_ETH_ADDRESS: felt252 = 6;
 
     const DEFAULT_INITIAL_SUPPLY_LOW: u128 = 1000;
     const DEFAULT_INITIAL_SUPPLY_HIGH: u128 = 0;
 
+    const NAME: felt252 = 'NAME';
+    const SYMBOL: felt252 = 'SYMBOL';
+    const DECIMALS: u8 = 18;
+
+
+    // TODO - Delete this once this can be a const.
+    fn default_amount() -> u256 {
+        u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
+    }
+
+    fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
+        (
+            EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS },
+            EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS },
+            EthAddress { address: DEFAULT_L1_RECIPIENT }
+        )
+    }
 
     fn set_caller_as_app_role_admin_app_governor(token_bridge_address: ContractAddress) {
         let token_bridge_roles = get_roles(:token_bridge_address);
@@ -68,70 +99,22 @@ mod token_bridge_test {
         token_bridge_roles.register_app_governor(account: caller());
     }
 
-    fn set_caller_as_upgrade_governor(token_bridge_address: ContractAddress) {
-        let token_bridge_roles = get_roles(:token_bridge_address);
-        token_bridge_roles.register_upgrade_governor(account: caller());
-    }
-    fn deploy_token_bridge() -> ContractAddress {
+
+    fn deploy_stub_msg_receiver() -> ContractAddress {
         // Set the constructor calldata.
-        let mut calldata = ArrayTrait::new();
-        DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
-
-        // Set the caller address for all the functions calls (except the constructor).
-        set_contract_address_as_caller();
-
-        // Set the caller address for the constructor.
-        starknet::testing::set_caller_address(address: caller());
+        let mut calldata = array![];
 
         // Deploy the contract.
-        let (token_bridge_address, _) = deploy_syscall(
-            TokenBridge::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata.span(), false
+        let (stub_msg_receiver_address, _) = deploy_syscall(
+            StubMsgReceiver::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata.span(), false
         )
             .unwrap();
-        token_bridge_address
+        stub_msg_receiver_address
     }
-
     fn get_token_bridge(token_bridge_address: ContractAddress) -> ITokenBridgeDispatcher {
         ITokenBridgeDispatcher { contract_address: token_bridge_address }
     }
 
-
-    fn get_replaceable(token_bridge_address: ContractAddress) -> IReplaceableDispatcher {
-        IReplaceableDispatcher { contract_address: token_bridge_address }
-    }
-
-    fn get_roles(token_bridge_address: ContractAddress) -> IRolesDispatcher {
-        IRolesDispatcher { contract_address: token_bridge_address }
-    }
-
-    fn get_access_control(token_bridge_address: ContractAddress) -> IAccessControlDispatcher {
-        IAccessControlDispatcher { contract_address: token_bridge_address }
-    }
-
-
-    fn dummy_replaceable_data(final: bool) -> ImplementationData {
-        // Set the eic_init_data calldata.
-        let mut calldata = ArrayTrait::new();
-        'dummy'.serialize(ref calldata);
-        'arbitrary'.serialize(ref calldata);
-        'values'.serialize(ref calldata);
-
-        ImplementationData {
-            impl_hash: class_hash_const::<17171>(),
-            eic_hash: class_hash_const::<343434>(),
-            eic_init_data: calldata.span(),
-            final: final
-        }
-    }
-
-
-    fn get_dummy_nonfinal_replaceable_data() -> ImplementationData {
-        dummy_replaceable_data(final: false)
-    }
-
-    fn get_dummy_final_replaceable_data() -> ImplementationData {
-        dummy_replaceable_data(final: true)
-    }
 
     // Deploys the token bridge and sets the caller as the app governer (and as App Role Admin).
     // Returns the token bridge.
@@ -139,6 +122,175 @@ mod token_bridge_test {
         let token_bridge_address = deploy_token_bridge();
         set_caller_as_app_role_admin_app_governor(:token_bridge_address);
         get_token_bridge(:token_bridge_address)
+    }
+
+    fn prepare_bridge_for_deploy_token(
+        token_bridge_address: ContractAddress, l1_bridge_address: EthAddress
+    ) {
+        // Get the token bridge and set the caller as the app governer (and as App Role Admin).
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
+
+        // Set the l1 bridge address in the token bridge.
+        token_bridge.set_l1_bridge(:l1_bridge_address);
+
+        // Set ERC20 class hash.
+        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
+        token_bridge.set_erc20_class_hash(erc20_class_hash);
+    }
+
+    // Prepares the bridge for deploying a new token and then deploys it.
+    fn deploy_new_token(
+        token_bridge_address: ContractAddress,
+        l1_bridge_address: EthAddress,
+        l1_token_address: EthAddress
+    ) {
+        prepare_bridge_for_deploy_token(:token_bridge_address, :l1_bridge_address);
+        // Set the contract address to be of the token bridge, so we can simulate l1 message handler
+        // invocations on the token bridge contract instance deployed at that address.
+        starknet::testing::set_contract_address(token_bridge_address);
+
+        // Deploy token contract.
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::handle_token_enrollment(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            l1_token_address: l1_token_address,
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
+        );
+    }
+
+    // Prepares the bridge for deploying a new token and then deploys it and do a first deposit into
+    // it.
+    fn deploy_new_token_and_deposit(
+        token_bridge_address: ContractAddress,
+        l1_bridge_address: EthAddress,
+        l1_token_address: EthAddress,
+        l2_recipient: ContractAddress,
+        amount_to_deposit: u256
+    ) {
+        deploy_new_token(:token_bridge_address, :l1_bridge_address, :l1_token_address);
+
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::handle_deposit(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            :l2_recipient,
+            token: l1_token_address,
+            amount: amount_to_deposit
+        );
+    }
+
+
+    // Prepares the bridge for deploying a new token, then deploys it and do a first deposit with
+    // message into it.
+    fn deploy_new_token_and_deposit_with_message(
+        token_bridge_address: ContractAddress,
+        l1_bridge_address: EthAddress,
+        l1_token_address: EthAddress,
+        l2_recipient: ContractAddress,
+        amount_to_deposit: u256,
+        depositor: EthAddress,
+        message: Span<felt252>
+    ) {
+        deploy_new_token(:token_bridge_address, :l1_bridge_address, :l1_token_address);
+
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::handle_deposit_with_message(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            :l2_recipient,
+            token: l1_token_address,
+            amount: amount_to_deposit,
+            :depositor,
+            :message
+        );
+    }
+
+    fn assert_l2_account_balance(
+        token_bridge_address: ContractAddress,
+        l1_token_address: EthAddress,
+        owner: ContractAddress,
+        amount: u256
+    ) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token_address = token_bridge.get_l2_token_address(l1_token_address);
+        let erc20_token = get_erc20_token(:l2_token_address);
+        assert(erc20_token.balance_of(owner) == amount, 'MISMATCHING_L2_ACCOUNT_BALANCE');
+    }
+
+
+    fn withdraw_and_validate(
+        token_bridge_address: ContractAddress,
+        withdraw_from: ContractAddress,
+        l1_recipient: EthAddress,
+        l1_token_address: EthAddress,
+        amount_to_withdraw: u256,
+        amount_before_withdraw: u256
+    ) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+
+        let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
+        let erc20_token = get_erc20_token(:l2_token_address);
+        let total_supply = erc20_token.total_supply();
+
+        starknet::testing::set_contract_address(address: withdraw_from);
+        token_bridge
+            .initiate_withdraw(:l1_recipient, token: l1_token_address, amount: amount_to_withdraw);
+        // Validate the new balance and total supply.
+        assert(
+            erc20_token.balance_of(withdraw_from) == amount_before_withdraw - amount_to_withdraw,
+            'INIT_WITHDRAW_BALANCE_ERROR'
+        );
+        assert(
+            erc20_token.total_supply() == total_supply - amount_to_withdraw,
+            'INIT_WITHDRAW_SUPPLY_ERROR'
+        );
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        assert(
+            emitted_event == Event::WithdrawInitiated(
+                WithdrawInitiated {
+                    l1_recipient: l1_recipient,
+                    token: l1_token_address,
+                    amount: amount_to_withdraw,
+                    caller_address: withdraw_from
+                }
+            ),
+            'WithdrawInitiated Error'
+        );
+    }
+
+    // Set the limit of the withdrawal amount and make sure that the event is emitted.
+    fn apply_withdrawal_limit(
+        token_bridge_address: ContractAddress, l1_token_address: EthAddress, applied_state: bool
+    ) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
+        set_contract_address_as_caller();
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, :applied_state);
+        // Validate event emission.
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        if (applied_state) {
+            assert(
+                emitted_event == Event::LimitWithdrawalOn(LimitWithdrawalOn { l1_token_address }),
+                'LimitWithdrawalOn Error'
+            );
+        } else {
+            assert(
+                emitted_event == Event::LimitWithdrawalOff(LimitWithdrawalOff { l1_token_address }),
+                'LimitWithdrawalOff Error'
+            );
+        };
+    }
+
+    fn get_max_allowed_withdrawal_amount(
+        token_bridge_address: ContractAddress, l1_token_address: EthAddress
+    ) -> u256 {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
+        TokenBridge::InternalFunctions::get_daily_withdrawal_limit(:l2_token_address)
     }
 
     #[test]
@@ -254,93 +406,613 @@ mod token_bridge_test {
 
     #[test]
     #[available_gas(30000000)]
-    fn test_successful_initate_withdraw() {
-        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
+    fn test_successful_initiate_withdraw() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        // Initiate withdraw (set the caller to be the initial_owner).
+        let amount_to_withdraw = u256 { low: 700, high: DEFAULT_INITIAL_SUPPLY_HIGH };
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            :amount_to_withdraw,
+            amount_before_withdraw: amount_to_deposit
+        );
+    }
+
+    // Tests the case where the withdrawal limit is on and the withdrawal amount is exactly the
+    // maximum allowed amount. This is done in a single withdrawal.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_initiate_withdraw_with_limits_one_withdrawal() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        // Withdraw exactly the maximum allowed amount.
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: max_amount_allowed_to_withdraw,
+            amount_before_withdraw: amount_to_deposit
+        );
+    }
+
+    // Tests the case where the withdrawal limit is on and the withdrawal amount is exactly the
+    // maximum allowed amount. This is done in two withdrawals.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_initiate_withdraw_with_limits_two_withdrawals() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+        // Withdraw exactly half of the allowed amount.
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit
+        );
+
+        // Withdraw exactly the allowed amount that left.
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: max_amount_allowed_to_withdraw - first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit - first_withdrawal_amount
+        );
+    }
+
+    // Tests the case where after the first legal withdrawal, limit withdrawal is turned off and
+    // then on again. The amount that is withdrawn during the time that the withdrawal limit is on,
+    // is exactly the maximum allowed amount.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_initiate_withdraw_with_and_without_limits() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: false);
+
+        // Withdraw above the allowed amount - legal because there is no withdrawal limit.
+        let amount_to_withdraw_no_limit = max_amount_allowed_to_withdraw + 1;
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: amount_to_withdraw_no_limit,
+            amount_before_withdraw: amount_to_deposit - first_withdrawal_amount
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        // Withdraw exactly the allowed amount that left.
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: max_amount_allowed_to_withdraw - first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit
+                - first_withdrawal_amount
+                - amount_to_withdraw_no_limit
+        );
+    }
+
+    // Tests the case where after the first legal withdrawal, limit withdrawal is turned off and
+    // then on again. The amount that is withdrawn during the time that the withdrawal limit is on,
+    // is above the maximum allowed amount.
+    #[test]
+    #[available_gas(30000000)]
+    #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
+    fn test_failed_initiate_withdraw_with_and_without_limits() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+
+        starknet::testing::set_contract_address(address: l2_recipient);
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient, token: l1_token_address, amount: first_withdrawal_amount
+            );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: false);
+
+        // Withdraw above the allowed amount - legal because there is no withdrawal limit.
+        starknet::testing::set_contract_address(address: l2_recipient);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient, token: l1_token_address, amount: max_amount_allowed_to_withdraw + 1
+            );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        // Withdraw above the allowed amount that left.
+        starknet::testing::set_contract_address(address: l2_recipient);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient,
+                token: l1_token_address,
+                amount: max_amount_allowed_to_withdraw - first_withdrawal_amount + 1
+            );
+    }
+
+    // Tests the case where the withdrawal limit is on and there are two withdrawals in two
+    // different days, where each withdrawal is exactly the maximum allowed amount per that day.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_initiate_withdraw_with_limits_different_days() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        // Withdraw exactly the allowed amount.
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: max_amount_allowed_to_withdraw,
+            amount_before_withdraw: amount_to_deposit
+        );
+
+        // Withdraw again after 1 day a legal amount.
+        let current_time = get_block_timestamp();
+        starknet::testing::set_block_timestamp(block_timestamp: SECONDS_IN_DAY + current_time);
+
+        let new_max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: new_max_amount_allowed_to_withdraw,
+            amount_before_withdraw: amount_to_deposit - max_amount_allowed_to_withdraw
+        );
+    }
+
+    // Tests the case where the withdrawal limit is on and there are two withdrawals in two
+    // different times but in the same day, where the sum of both withdrawal's amount is exactly the
+    // maximum allowed amount per that day.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_initiate_withdraw_with_limits_same_day_differnet_time() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit
+        );
+
+        // Withdraw again at the same day a legal amount for this day.
+        let current_time = get_block_timestamp();
+        // Get another timestamp at the same day.
+        let mut different_time_same_day = current_time + 1000;
+        if (different_time_same_day / 86400 != current_time / 86400) {
+            different_time_same_day = current_time - 1000;
+        }
+        starknet::testing::set_block_timestamp(block_timestamp: different_time_same_day);
+
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: max_amount_allowed_to_withdraw - first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit - first_withdrawal_amount
+        );
+    }
+
+    // Tests the case where the withdrawal limit is on and the withdrawal amount is above the
+    // maximum allowed amount. This is done in a single withdrawal.
+    #[test]
+    #[available_gas(30000000)]
+    #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
+    fn test_failed_initiate_withdraw_limit_exceeded_one_withdrawal() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+
+        // Withdraw above the allowed amount.
+        starknet::testing::set_contract_address(address: l2_recipient);
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient, token: l1_token_address, amount: max_amount_allowed_to_withdraw + 1
+            );
+    }
+
+
+    // Tests the case where the withdrawal limit is on and the withdrawal amount is above the
+    // maximum allowed amount. This is done in a two withdrawals.
+    #[test]
+    #[available_gas(30000000)]
+    #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
+    fn test_failed_initiate_withdraw_limit_exceeded_two_withdrawals() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        apply_withdrawal_limit(:token_bridge_address, :l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+
+        // Withdraw above the allowed amount in the second withdrawal.
+        starknet::testing::set_contract_address(address: l2_recipient);
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient, token: l1_token_address, amount: first_withdrawal_amount
+            );
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient,
+                token: l1_token_address,
+                amount: max_amount_allowed_to_withdraw - first_withdrawal_amount + 1
+            );
+    }
+
+
+    // Tests the case where the withdrawal limit is on and there are two withdrawals in two
+    // different times but in the same day, where the sum of both withdrawal's amount is above the
+    // maximum allowed amount per that day.
+    #[test]
+    #[available_gas(30000000)]
+    #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
+    fn test_failed_initiate_withdraw_limit_exceeded_same_day_different_time() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        // Limit the withdrawal amount.
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        set_contract_address_as_caller();
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: true);
+
+        let max_amount_allowed_to_withdraw = get_max_allowed_withdrawal_amount(
+            :token_bridge_address, :l1_token_address
+        );
+        let first_withdrawal_amount = max_amount_allowed_to_withdraw / 2;
+        withdraw_and_validate(
+            :token_bridge_address,
+            withdraw_from: l2_recipient,
+            :l1_recipient,
+            :l1_token_address,
+            amount_to_withdraw: first_withdrawal_amount,
+            amount_before_withdraw: amount_to_deposit
+        );
+
+        let current_time = get_block_timestamp();
+        // Get another timestamp at the same day.
+        let mut different_time_same_day = current_time + 1000;
+        if (different_time_same_day / 86400 != current_time / 86400) {
+            different_time_same_day = current_time - 1000;
+        }
+        // Withdraw again at the same day. This time withdraw an amount that exceeds the limit.
+        starknet::testing::set_block_timestamp(block_timestamp: different_time_same_day);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient,
+                token: l1_token_address,
+                amount: max_amount_allowed_to_withdraw - first_withdrawal_amount + 1
+            );
+    }
+
+    #[test]
+    #[should_panic(expected: ('ONLY_APP_GOVERNOR', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_apply_withdrawal_limit_not_app_governor() {
         let token_bridge_address = deploy_token_bridge();
         let token_bridge = get_token_bridge(:token_bridge_address);
-        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
 
-        // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-
-        // Set the l1 bridge address in the token bridge.
-        token_bridge.set_l1_bridge(:l1_bridge_address);
-
-        // Set ERC20 class hash.
-        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
-        token_bridge.set_erc20_class_hash(erc20_class_hash);
-
-        // Deploy token contract.
+        // Use an arbitrary l1 token address.
         let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
-        starknet::testing::set_contract_address(token_bridge_address);
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deploy(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            l1_token_address: l1_token_address,
-            name: 'NAME',
-            symbol: 'SYMBOL',
-            decimals: 18_u8
-        );
-
-        let l2_token_address = token_bridge.get_l2_token_address(l1_token_address);
-        let erc20_token = get_erc20_token(:l2_token_address);
-
-        // set balance
-        let initial_owner = initial_owner();
-        let amount = u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH };
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deposit(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            account: initial_owner,
-            token: l1_token_address,
-            amount: amount
-        );
-
-        // Initate withdraw (set the caller to be the initial_owner).
-        let l1_recipient = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-        let amount = u256 { low: 700, high: DEFAULT_INITIAL_SUPPLY_HIGH };
-        starknet::testing::set_contract_address(address: initial_owner);
-        token_bridge.initiate_withdraw(:l1_recipient, token: l1_token_address, :amount);
-
-        // Validate the new balance and total supply.
-        assert(
-            erc20_token
-                .balance_of(initial_owner) == u256 { low: 300, high: DEFAULT_INITIAL_SUPPLY_HIGH },
-            'INIT_WITHDRAW_BALANCE_ERROR'
-        );
-        assert(
-            erc20_token.total_supply() == u256 { low: 300, high: DEFAULT_INITIAL_SUPPLY_HIGH },
-            'INIT_WITHDRAW_SUPPLY_ERROR'
-        );
-
-        // Validate event emission.
-        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
-        assert(
-            emitted_event == Event::WithdrawInitiated(
-                WithdrawInitiated {
-                    l1_recipient: l1_recipient,
-                    token: l1_token_address,
-                    amount: amount,
-                    caller_address: initial_owner
-                }
-            ),
-            'WithdrawInitiated Error'
-        );
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: true);
     }
 
 
     #[test]
+    #[should_panic(expected: ('TOKEN_NOT_IN_BRIDGE', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_successful_handle_deploy() {
+    fn test_apply_withdrawal_limit_token_not_in_bridge() {
+        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
+        let token_bridge = deploy_and_prepare();
+
+        // Use an arbitrary l1 token address (which was not deployed).
+        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: true);
+    }
+
+
+    // Tests that in case the withdrawal limit is on/off and there is another attempt to start/stop
+    // the limit accordingly, the value is not changed and no event is being emitted.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_token_limited_unchanged_no_event() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+        let token_bridge = get_token_bridge(:token_bridge_address);
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
+
+        // Empty the event queue.
+        pop_last_k_events(address: token_bridge_address, k: 1);
+
+        // The default is that the withdrawal limit is off; hence, stopping the limit again should
+        // not emit an event or change the value.
+        set_contract_address_as_caller();
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: false);
+        assert(
+            token_bridge.get_remaining_withdrawal_quota(:l2_token_address) == BoundedInt::max(),
+            'withdraw_limited_apply Error'
+        );
+        validate_empty_event_queue(address: token_bridge_address);
+
+        set_contract_address_as_caller();
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: true);
+
+        // Empty the event queue.
+        pop_last_k_events(address: token_bridge_address, k: 1);
+
+        // The withdrawal limit is on; hence, starting the limit again should not emit an event or
+        // change the value.
+        token_bridge.apply_withdrawal_limit(token: l1_token_address, applied_state: true);
+        assert(
+            token_bridge.get_remaining_withdrawal_quota(:l2_token_address) != BoundedInt::max(),
+            'withdraw_limited_apply Error'
+        );
+        validate_empty_event_queue(address: token_bridge_address);
+    }
+
+
+    // Tests that get_daily_withdrawal_limit returns the right amount.
+    #[test]
+    #[available_gas(30000000)]
+    fn test_get_daily_withdrawal_limit() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+        let token_bridge = get_token_bridge(:token_bridge_address);
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+        let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
+        let mut expected_result = amount_to_deposit * DAILY_WITHDRAW_LIMIT_PCT / 100;
+        assert(
+            TokenBridge::InternalFunctions::get_daily_withdrawal_limit(
+                :l2_token_address
+            ) == expected_result,
+            'daily_withdrawal_limit Error'
+        );
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_handle_token_enrollment() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
         let token_bridge_address = deploy_token_bridge();
         let token_bridge = get_token_bridge(:token_bridge_address);
         set_caller_as_app_role_admin_app_governor(:token_bridge_address);
 
         // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
         token_bridge.set_l1_bridge(:l1_bridge_address);
         let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
         assert(
@@ -363,17 +1035,15 @@ mod token_bridge_test {
             'Erc20ClassHashStored Error'
         );
 
-        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
-
         starknet::testing::set_contract_address(token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deploy(
+        TokenBridge::handle_token_enrollment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token_address: l1_token_address,
-            name: 'TOKEN_NAME',
-            symbol: 'TOKEN_SYMBOL',
-            decimals: 6_u8
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
         );
 
         let l2_token_address = token_bridge.get_l2_token_address(:l1_token_address);
@@ -382,10 +1052,9 @@ mod token_bridge_test {
             emitted_event == Event::DeployHandled(
                 DeployHandled {
                     l1_token_address: l1_token_address,
-                    l2_token_address: l2_token_address,
-                    name: 'TOKEN_NAME',
-                    symbol: 'TOKEN_SYMBOL',
-                    decimals: 6_u8
+                    name: NAME,
+                    symbol: SYMBOL,
+                    decimals: DECIMALS
                 }
             ),
             'DeployHandled Error'
@@ -397,33 +1066,69 @@ mod token_bridge_test {
     }
 
     #[test]
-    #[should_panic(expected: ('EXPECTED_FROM_BRIDGE_ONLY',))]
+    #[should_panic(expected: ('TOKEN_ALREADY_EXISTS',))]
     #[available_gas(30000000)]
-    fn test_non_l1_token_message_handle_deploy() {
+    fn test_handle_token_enrollment_twice() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
         let token_bridge_address = deploy_token_bridge();
         let token_bridge = get_token_bridge(:token_bridge_address);
         set_caller_as_app_role_admin_app_governor(:token_bridge_address);
 
         // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
         token_bridge.set_l1_bridge(:l1_bridge_address);
 
         // Set ERC20 class hash.
-        token_bridge.set_erc20_class_hash(PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap());
-
-        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
+        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
+        token_bridge.set_erc20_class_hash(erc20_class_hash);
 
         starknet::testing::set_contract_address(token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+
+        // Enroll the token twice.
+        let name = 'TOKEN_NAME';
+        let symbol = 'TOKEN_SYMBOL';
+        let decimals = 6_u8;
+        TokenBridge::handle_token_enrollment(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            l1_token_address: l1_token_address,
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
+        );
+        TokenBridge::handle_token_enrollment(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            l1_token_address: l1_token_address,
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
+        );
+    }
+
+    #[test]
+    #[should_panic(expected: ('EXPECTED_FROM_BRIDGE_ONLY',))]
+    #[available_gas(30000000)]
+    fn test_non_l1_token_message_handle_token_enrollment() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+        prepare_bridge_for_deploy_token(:token_bridge_address, :l1_bridge_address);
+
+        starknet::testing::set_contract_address(token_bridge_address);
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+
         let l1_not_bridge_address = EthAddress { address: NON_DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-        TokenBridge::handle_deploy(
+        TokenBridge::handle_token_enrollment(
             ref token_bridge_state,
             from_address: l1_not_bridge_address.into(),
             l1_token_address: l1_token_address,
-            name: 'NAME',
-            symbol: 'SYMBOL',
-            decimals: 18_u8
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
         );
     }
 
@@ -431,52 +1136,25 @@ mod token_bridge_test {
     #[test]
     #[should_panic(expected: ('ZERO_WITHDRAWAL', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_zero_amount_initate_withdraw() {
-        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
+    fn test_zero_amount_initiate_withdraw() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
         let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        // Initiate withdraw.
         let token_bridge = get_token_bridge(:token_bridge_address);
-        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
-
-        // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-
-        // Set the l1 bridge address in the token bridge.
-        token_bridge.set_l1_bridge(:l1_bridge_address);
-
-        // Set ERC20 class hash.
-        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
-        token_bridge.set_erc20_class_hash(erc20_class_hash);
-
-        // Deploy token contract.
-        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
-        starknet::testing::set_contract_address(token_bridge_address);
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deploy(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            l1_token_address: l1_token_address,
-            name: 'NAME',
-            symbol: 'SYMBOL',
-            decimals: 18_u8
-        );
-
-        let l2_token_address = token_bridge.get_l2_token_address(l1_token_address);
-        let erc20_token = get_erc20_token(:l2_token_address);
-
-        // set balance
-        let initial_owner = initial_owner();
-        let amount = u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH };
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deposit(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            account: initial_owner,
-            token: l1_token_address,
-            amount: amount
-        );
-
-        // Initate withdraw.
-        let l1_recipient = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
         let amount = u256 { low: 0, high: DEFAULT_INITIAL_SUPPLY_HIGH };
         token_bridge.initiate_withdraw(:l1_recipient, token: l1_token_address, :amount);
     }
@@ -484,103 +1162,49 @@ mod token_bridge_test {
     #[test]
     #[should_panic(expected: ('INSUFFICIENT_FUNDS', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_excessive_amount_initate_withdraw() {
-        // Deploy the token bridge.
+    fn test_excessive_amount_initiate_withdraw() {
+        // Create an arbitrary l1 bridge, token address and l1 recipient.
+        let (l1_bridge_address, l1_token_address, l1_recipient) = get_default_l1_addresses();
+
         let token_bridge_address = deploy_token_bridge();
+
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let amount_to_deposit = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            :amount_to_deposit
+        );
+
+        // Initiate withdraw.
         let token_bridge = get_token_bridge(:token_bridge_address);
-
-        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
-        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
-        // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-        token_bridge.set_l1_bridge(:l1_bridge_address);
-
-        // Set ERC20 class hash.
-        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
-        token_bridge.set_erc20_class_hash(erc20_class_hash);
-
-        // Deploy token contract.
-        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
-        starknet::testing::set_contract_address(token_bridge_address);
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deploy(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            l1_token_address: l1_token_address,
-            name: 'NAME',
-            symbol: 'SYMBOL',
-            decimals: 18_u8
-        );
-
-        let l2_token_address = token_bridge.get_l2_token_address(l1_token_address);
-        let erc20_token = get_erc20_token(:l2_token_address);
-
-        // set balance.
-        let initial_owner = initial_owner();
-        let amount = u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH };
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deposit(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            account: initial_owner,
-            token: l1_token_address,
-            amount: amount
-        );
-
-        // Initate withdraw.
-        let l1_recipient = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-        let amount = u256 {
-            low: DEFAULT_INITIAL_SUPPLY_LOW + 1, high: DEFAULT_INITIAL_SUPPLY_HIGH
-        };
-        token_bridge.initiate_withdraw(:l1_recipient, token: l1_token_address, :amount);
+        token_bridge
+            .initiate_withdraw(
+                :l1_recipient, token: l1_token_address, amount: amount_to_deposit + 1
+            );
     }
 
     #[test]
     #[available_gas(30000000)]
     fn test_successful_handle_deposit() {
-        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
         let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_token_bridge(:token_bridge_address);
-        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
 
-        // Set an arbitrary l1 bridge address.
-        let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-
-        // Set the l1 bridge address in the token bridge.
-        token_bridge.set_l1_bridge(:l1_bridge_address);
-
-        // Set ERC20 class hash.
-        let erc20_class_hash = PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap();
-        token_bridge.set_erc20_class_hash(erc20_class_hash);
-
-        // Deploy token contract.
-        let initial_owner = initial_owner();
-        let l1_token_address = EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS };
-        starknet::testing::set_contract_address(token_bridge_address);
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deploy(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            l1_token_address: l1_token_address,
-            name: 'NAME',
-            symbol: 'SYMBOL',
-            decimals: 18_u8
+        // Deploy a new token and deposit funds to this token.
+        let l2_recipient = initial_owner();
+        let first_amount = default_amount();
+        deploy_new_token_and_deposit(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            :l2_recipient,
+            amount_to_deposit: first_amount
         );
-
-        // set balance
-        let initial_owner = initial_owner();
-        let amount = u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH };
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_deposit(
-            ref token_bridge_state,
-            from_address: l1_bridge_address.into(),
-            account: initial_owner,
-            token: l1_token_address,
-            amount: amount
-        );
-
-        let l2_token_address = token_bridge.get_l2_token_address(l1_token_address);
-        let erc20_token = get_erc20_token(:l2_token_address);
 
         // Set the contract address to be of the token bridge, so we can simulate l1 message handler
         // invocations on the token bridge contract instance deployed at that address.
@@ -588,34 +1212,145 @@ mod token_bridge_test {
 
         // Simulate an "handle_deposit" l1 message.
         let deposit_amount_low: u128 = 17;
-        let amount = u256 { low: deposit_amount_low, high: DEFAULT_INITIAL_SUPPLY_HIGH };
+        let second_amount = u256 { low: deposit_amount_low, high: DEFAULT_INITIAL_SUPPLY_HIGH };
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
         TokenBridge::handle_deposit(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
-            account: initial_owner,
+            :l2_recipient,
             token: l1_token_address,
-            amount: amount
+            amount: second_amount
         );
-
-        assert(
-            erc20_token
-                .balance_of(
-                    initial_owner
-                ) == u256 {
-                    low: DEFAULT_INITIAL_SUPPLY_LOW + deposit_amount_low,
-                    high: DEFAULT_INITIAL_SUPPLY_HIGH
-                },
-            'HANDLE_DEPOSIT_AMOUNT_FAILED'
+        let total_amount = first_amount + second_amount;
+        assert_l2_account_balance(
+            :token_bridge_address, :l1_token_address, owner: l2_recipient, amount: total_amount
         );
 
         // Validate event emission.
         let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
         assert(
             emitted_event == Event::DepositHandled(
-                DepositHandled { account: initial_owner, token: l1_token_address, amount: amount }
+                DepositHandled {
+                    l2_recipient: l2_recipient, token: l1_token_address, amount: second_amount
+                }
             ),
             'DepositHandled Error'
+        );
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_successful_handle_deposit_with_message() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        // Create a dummy contract that will be the account to deposit to.
+        let stub_msg_receiver_address = deploy_stub_msg_receiver();
+
+        let amount_to_deposit = default_amount();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
+
+        // Create a dummy message.
+        let mut message = array![];
+        7.serialize(ref message);
+        let message_span = message.span();
+
+        deploy_new_token_and_deposit_with_message(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            l2_recipient: stub_msg_receiver_address,
+            :amount_to_deposit,
+            depositor: depositor,
+            message: message_span
+        );
+
+        assert_l2_account_balance(
+            :token_bridge_address,
+            :l1_token_address,
+            owner: stub_msg_receiver_address,
+            amount: amount_to_deposit
+        );
+
+        // Validate event emission.
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        assert(
+            emitted_event == Event::DepositWithMessageHandled(
+                DepositWithMessageHandled {
+                    l2_recipient: stub_msg_receiver_address,
+                    token: l1_token_address,
+                    amount: amount_to_deposit,
+                    message: message_span
+                }
+            ),
+            'DepositWithMessageHandled Error'
+        );
+    }
+
+
+    #[test]
+    #[should_panic(expected: ('DEPOSIT_REJECTED',))]
+    #[available_gas(30000000)]
+    // Tests the case where on receive returns false. In this case, the deposit should fail.
+    fn test_handle_deposit_with_message_on_receive_return_false() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        let amount_to_deposit = default_amount();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
+
+        // Create a dummy contract that will be the account to deposit to.
+        let stub_msg_receiver_address = deploy_stub_msg_receiver();
+
+        // Create a dummy message.
+        let mut message = array![];
+        'RETURN FALSE'.serialize(ref message);
+        let message_span = message.span();
+
+        deploy_new_token_and_deposit_with_message(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            l2_recipient: stub_msg_receiver_address,
+            :amount_to_deposit,
+            depositor: depositor,
+            message: message_span
+        );
+    }
+
+    #[test]
+    #[should_panic(expected: ('ON_RECEIVE_FAILED',))]
+    #[available_gas(30000000)]
+    // Tests the case where on receive fails. In this case, the deposit should fail.
+    fn test_handle_deposit_with_message_fail_on_receive() {
+        // Create an arbitrary l1 bridge and token address.
+        let (l1_bridge_address, l1_token_address, _) = get_default_l1_addresses();
+
+        // Create a dummy contract that will be the account to deposit to.
+        let stub_msg_receiver_address = deploy_stub_msg_receiver();
+
+        let token_bridge_address = deploy_token_bridge();
+
+        let amount_to_deposit = default_amount();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
+
+        // Create a dummy message.
+        let mut message = array![];
+        'ASSERT'.serialize(ref message);
+        let message_span = message.span();
+
+        deploy_new_token_and_deposit_with_message(
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token_address,
+            l2_recipient: stub_msg_receiver_address,
+            :amount_to_deposit,
+            depositor: depositor,
+            message: message_span
         );
     }
 
@@ -655,278 +1390,12 @@ mod token_bridge_test {
         TokenBridge::handle_deposit(
             ref token_bridge_state,
             from_address: l1_not_bridge_address.into(),
-            account: initial_owner,
+            l2_recipient: initial_owner,
             token: l1_bridge_address,
-            amount: u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
+            amount: default_amount()
         );
     }
 
-    #[test]
-    #[available_gas(30000000)]
-    fn test_replaceability_get_upgrade_delay() {
-        // Deploy the token bridge.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-
-        // Validate the upgrade delay.
-        assert(
-            token_bridge.get_upgrade_delay() == DEFAULT_UPGRADE_DELAY, 'DEFAULT_UPGRADE_DELAY_ERROR'
-        );
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_replaceability_add_new_implementation() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Check implementation time pre addition.
-        assert(
-            token_bridge.get_impl_activation_time(:implementation_data) == 0,
-            'INCORRECT_IMPLEMENTATION_ERROR'
-        );
-
-        token_bridge.add_new_implementation(:implementation_data);
-
-        // Check implementation time post addition.
-        assert(
-            token_bridge.get_impl_activation_time(:implementation_data) == DEFAULT_UPGRADE_DELAY,
-            'INCORRECT_IMPLEMENTATION_ERROR'
-        );
-
-        // Validate event emission.
-        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
-        assert(
-            emitted_event == Event::ImplementationAdded(
-                ImplementationAdded { implementation_data: implementation_data }
-            ),
-            'ImplementationAdded Error'
-        );
-    }
-
-    #[test]
-    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_replaceability_add_new_implementation_not_upgrade_governor() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Invoke not as an Upgrade Governor.
-        let not_governor_address = not_caller();
-        starknet::testing::set_contract_address(not_governor_address);
-        token_bridge.add_new_implementation(:implementation_data);
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_replaceability_remove_implementation() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Remove implementation that was not previously added.
-        // TODO the following should NOT emit an event.
-        token_bridge.remove_implementation(:implementation_data);
-        assert(
-            token_bridge.get_impl_activation_time(:implementation_data) == 0,
-            'INCORRECT_IMPLEMENTATION_ERROR'
-        );
-
-        // Add implementation.
-        token_bridge.add_new_implementation(:implementation_data);
-
-        // Validate event emission for adding the implementation.
-        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
-        assert(
-            emitted_event == Event::ImplementationAdded(
-                ImplementationAdded { implementation_data: implementation_data }
-            ),
-            'ImplementationAdded Error'
-        );
-
-        // Remove implementation
-        token_bridge.remove_implementation(:implementation_data);
-
-        assert(
-            token_bridge.get_impl_activation_time(:implementation_data) == 0,
-            'INCORRECT_IMPLEMENTATION_ERROR'
-        );
-
-        // Validate event emission for removing the implementation.
-        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
-        assert(
-            emitted_event == Event::ImplementationRemoved(
-                ImplementationRemoved { implementation_data: implementation_data }
-            ),
-            'ImplementationRemoved Error'
-        );
-    }
-
-    #[test]
-    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_replaceability_remove_implementation_not_upgrade_governor() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Invoke not as an Upgrade Governor.
-        set_contract_address_as_not_caller();
-        token_bridge.remove_implementation(:implementation_data);
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_replaceability_replace_to_nonfinal() {
-        // Tests replacing an implementation to a non-final implementation, as follows:
-        // 1. deploys a replaceable contract
-        // 2. generates a non-final dummy implementation replacement
-        // 3. adds it to the replaceable contract
-        // 4. advances time until the new implementation is ready
-        // 5. replaces to the new implemenation
-        // 6. checks the implemenation is not final
-
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Add implementation and advance time to enable it.
-        token_bridge.add_new_implementation(:implementation_data);
-        starknet::testing::set_block_timestamp(DEFAULT_UPGRADE_DELAY + 1);
-
-        token_bridge.replace_to(:implementation_data);
-
-        // Validate event emission.
-        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
-        assert(
-            emitted_event == Event::ImplementationReplaced(
-                ImplementationReplaced { implementation_data: implementation_data }
-            ),
-            'ImplementationReplaced Error'
-        );
-    // TODO check the new impl hash.
-    // TODO check the new impl is not final.
-    // TODO check that ImplementationFinalized is NOT emitted.
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_replaceability_replace_to_final() {
-        // Tests replacing an implementation to a final implementation, as follows:
-        // 1. deploys a replaceable contract
-        // 2. generates a final dummy implementation replacement
-        // 3. adds it to the replaceable contract
-        // 4. advances time until the new implementation is ready
-        // 5. replaces to the new implemenation
-        // 6. checks the implementation is final
-
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_final_replaceable_data();
-
-        // Add implementation and advance time to enable it.
-        token_bridge.add_new_implementation(:implementation_data);
-        starknet::testing::set_block_timestamp(DEFAULT_UPGRADE_DELAY + 1);
-
-        token_bridge.replace_to(:implementation_data);
-
-        // Validate event emissions -- replacement and finalization of the implementation.
-        let implementation_events = pop_last_k_events(address: token_bridge_address, k: 2);
-
-        let implementation_replaced_event = deserialize_event(
-            raw_event: *implementation_events.at(0)
-        );
-        assert(
-            implementation_replaced_event == ImplementationReplaced {
-                implementation_data: implementation_data
-            },
-            'ImplementationReplaced Error'
-        );
-
-        let implementation_finalized_event = deserialize_event(
-            raw_event: *implementation_events.at(1)
-        );
-        assert(
-            implementation_finalized_event == ImplementationFinalized {
-                impl_hash: implementation_data.impl_hash
-            },
-            'ImplementationFinalized Error'
-        );
-    // TODO check the new impl hash.
-    // TODO check the new impl is final.
-    }
-
-    #[test]
-    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_replaceability_replace_to_not_upgrade_governor() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_nonfinal_replaceable_data();
-
-        // Invoke not as an Upgrade Governor.
-        set_contract_address_as_not_caller();
-        token_bridge.replace_to(:implementation_data);
-    }
-
-    #[test]
-    #[should_panic(expected: ('FINALIZED', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_replaceability_replace_to_already_final() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_final_replaceable_data();
-
-        // Set the contract address to be of the token bridge, so we can call the internal
-        // finalize() function on the replaceable contract state.
-        starknet::testing::set_contract_address(token_bridge_address);
-        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::InternalFunctions::finalize(ref token_bridge_state);
-
-        set_contract_address_as_caller();
-        token_bridge.replace_to(:implementation_data);
-    }
-
-    #[test]
-    #[should_panic(expected: ('UNKNOWN_IMPLEMENTATION', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_replaceability_unknown_implementation() {
-        // Deploy the token bridge and set the caller as an Upgrade Governor.
-        let token_bridge_address = deploy_token_bridge();
-        let token_bridge = get_replaceable(:token_bridge_address);
-        set_caller_as_upgrade_governor(:token_bridge_address);
-
-        let implementation_data = get_dummy_final_replaceable_data();
-
-        // Calling replace_to without previously adding the implementation.
-        token_bridge.replace_to(:implementation_data);
-    }
 
     // Tests the functionality of the internal function grant_role_and_emit
     // which is commonly used by all role registration functions.
@@ -939,8 +1408,8 @@ mod token_bridge_test {
 
         // Set admin_of_arbitrary_role as an admin role of arbitrary_role and then grant the caller
         // the role of admin_of_arbitrary_role.
-        let arbitrary_role: felt252 = 'ARBITRARY';
-        let admin_of_arbitrary_role: felt252 = 'ADMIN_OF_ARBITRARY';
+        let arbitrary_role = 'ARBITRARY';
+        let admin_of_arbitrary_role = 'ADMIN_OF_ARBITRARY';
 
         // Set the token bridge address to be the contract address since we are calling internal
         // funcitons later.
@@ -1008,12 +1477,14 @@ mod token_bridge_test {
         );
         validate_empty_event_queue(address: token_bridge_address);
     }
+
+
     #[test]
     #[should_panic(expected: ('INVALID_ACCOUNT_ADDRESS',))]
     #[available_gas(30000000)]
     fn test_grant_role_and_emit_zero_account() {
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        let arbitrary_role: felt252 = 'ARBITRARY';
+        let arbitrary_role = 'ARBITRARY';
         let zero_account = starknet::contract_address_const::<0>();
         let role = 'DUMMY_0';
         let previous_admin_role = 'DUMMY_0';
@@ -1036,8 +1507,8 @@ mod token_bridge_test {
 
         // Set admin_of_arbitrary_role as an admin role of arbitrary_role and then grant the caller
         // the role of admin_of_arbitrary_role.
-        let arbitrary_role: felt252 = 'ARBITRARY';
-        let admin_of_arbitrary_role: felt252 = 'ADMIN_OF_ARBITRARY';
+        let arbitrary_role = 'ARBITRARY';
+        let admin_of_arbitrary_role = 'ADMIN_OF_ARBITRARY';
 
         // Set the token bridge address to be the contract address since we are calling internal
         // funcitons later.
@@ -1116,37 +1587,37 @@ mod token_bridge_test {
 
         // Validate that by default, 0 is the role admin of all roles.
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: APP_GOVERNOR
             ) == 0,
             '0 should be default role admin'
         );
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: APP_ROLE_ADMIN
             ) == 0,
             '0 should be default role admin'
         );
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: GOVERNANCE_ADMIN
             ) == 0,
             '0 should be default role admin'
         );
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: OPERATOR
             ) == 0,
             '0 should be default role admin'
         );
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: TOKEN_ADMIN
             ) == 0,
             '0 should be default role admin'
         );
         assert(
-            TokenBridge::AccessControlImpl::get_role_admin(
+            TokenBridge::AccessControlImplExternal::get_role_admin(
                 @token_bridge_state, role: UPGRADE_GOVERNOR
             ) == 0,
             '0 should be default role admin'
@@ -1199,8 +1670,8 @@ mod token_bridge_test {
         TokenBridge::InternalFunctions::_initialize_roles(ref token_bridge_state);
     }
 
-    // Validates is_app_governor function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_app_governor function, under the assumption that register_app_role_admin and
+    // register_app_governor, function as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_app_governor() {
@@ -1216,15 +1687,15 @@ mod token_bridge_test {
 
         // Grant the caller the App Role Admin role and then the caller grant the arbitrary_account
         // the App Governor role.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: APP_ROLE_ADMIN, account: caller());
-        token_bridge_acess_control.grant_role(role: APP_GOVERNOR, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_app_role_admin(account: caller());
+        token_bridge_roles.register_app_governor(account: arbitrary_account);
 
         assert(token_bridge_roles.is_app_governor(account: arbitrary_account), 'Role not granted');
     }
 
-    // Validates is_app_role_admin function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_app_role_admin function, under the assumption that register_app_role_admin,
+    // functions as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_app_role_admin() {
@@ -1238,16 +1709,16 @@ mod token_bridge_test {
         );
 
         // Grant the arbitrary_account the App Role Admin role by the caller.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: APP_ROLE_ADMIN, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_app_role_admin(account: arbitrary_account);
 
         assert(
             token_bridge_roles.is_app_role_admin(account: arbitrary_account), 'Role not granted'
         );
     }
 
-    // Validates is_governance_admin function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_governance_admin function, under the assumption that register_governance_admin,
+    // functions as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_governance_admin() {
@@ -1261,16 +1732,16 @@ mod token_bridge_test {
         );
 
         // Grant the arbitrary_account the Governance Admin role by the caller.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: GOVERNANCE_ADMIN, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_governance_admin(account: arbitrary_account);
 
         assert(
             token_bridge_roles.is_governance_admin(account: arbitrary_account), 'Role not granted'
         );
     }
 
-    // Validates is_operator_admin function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_operator_admin function, under the assumption that register_app_role_admin and
+    // register_operator, function as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_operator() {
@@ -1284,15 +1755,15 @@ mod token_bridge_test {
 
         // Grant the caller the App Role Admin role and then the caller grant the arbitrary_account
         // the Operator role.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: APP_ROLE_ADMIN, account: caller());
-        token_bridge_acess_control.grant_role(role: OPERATOR, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_app_role_admin(account: caller());
+        token_bridge_roles.register_operator(account: arbitrary_account);
 
         assert(token_bridge_roles.is_operator(account: arbitrary_account), 'Role not granted');
     }
 
-    // Validates is_token_admin function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_token_admin function, under the assumption that register_app_role_admin and
+    // register_token_admin, function as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_token_admin() {
@@ -1307,14 +1778,14 @@ mod token_bridge_test {
 
         // Grant the caller the App Role Admin role and then the caller grant the arbitrary_account
         // the Token Admin role.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: APP_ROLE_ADMIN, account: caller());
-        token_bridge_acess_control.grant_role(role: TOKEN_ADMIN, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_app_role_admin(account: caller());
+        token_bridge_roles.register_token_admin(account: arbitrary_account);
 
         assert(token_bridge_roles.is_token_admin(account: arbitrary_account), 'Role not granted');
     }
-    // Validates is_upgrade_governor function, under the assumption that grant_role, functions as
-    // expected.
+    // Validates is_upgrade_governor function, under the assumption that register_upgrade_governor,
+    // functions as expected.
     #[test]
     #[available_gas(30000000)]
     fn test_is_upgrade_governor() {
@@ -1328,8 +1799,8 @@ mod token_bridge_test {
         );
 
         // Grant the arbitrary account the Upgrade Governor role.
-        let token_bridge_acess_control = get_access_control(:token_bridge_address);
-        token_bridge_acess_control.grant_role(role: UPGRADE_GOVERNOR, account: arbitrary_account);
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_upgrade_governor(account: arbitrary_account);
 
         assert(
             token_bridge_roles.is_upgrade_governor(account: arbitrary_account), 'Role not granted'

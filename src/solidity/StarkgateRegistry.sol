@@ -6,11 +6,12 @@ import "starkware/solidity/interfaces/ProxySupport.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "src/solidity/IStarkgateRegistry.sol";
+import "src/solidity/IStarkgateService.sol";
 import "src/solidity/StarkgateConstants.sol";
 
 contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, IStarkgateRegistry {
     using Addresses for address;
-    // Random storage slot tags.
+    // Named storage slot tags.
     string internal constant MANAGER_TAG = "STARKGATE_REGISTRY_MANAGER_SLOT_TAG";
     string internal constant TOKEN_TO_BRIDGE_TAG = "STARKGATE_REGISTRY_TOKEN_TO_BRIDGE_SLOT_TAG";
     string internal constant TOKEN_TO_WITHDRAWAL_BRIDGES_TAG =
@@ -84,7 +85,7 @@ contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, I
       Add a mapping between a token and the bridge handling it.
       Ensuring unique enrollment.
     */
-    function enrollToken(address tokenAddress, address bridge) external onlyManager {
+    function enlistToken(address tokenAddress, address bridge) external onlyManager {
         address currentBridge = tokenToBridge()[tokenAddress];
         require(
             currentBridge == address(0) || currentBridge == CANNOT_DEPLOY_BRIDGE,
@@ -100,12 +101,26 @@ contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, I
         tokenToBridge()[token] = CANNOT_DEPLOY_BRIDGE;
     }
 
+    /**
+      Block a specific token from being used in the StarkGate.
+      A blocked token cannot be deployed.
+    */
+    // TODO : add test.
+    function blockToken(address token) external onlyManager {
+        tokenToBridge()[token] = CANNOT_DEPLOY_BRIDGE;
+    }
+
     function getWithdrawalBridges(address token) external view returns (address[] memory bridges) {
         return tokenToWithdrawalBridges()[token];
     }
 
-    function removeSelf(address token) external {
+    /**
+      Using this function a bridge removes enlisting of its token from the registry.
+      The bridge must implement `isServicingToken(address token)` (see `IStarkgateService`).
+    */
+    function selfRemove(address token) external {
         require(tokenToBridge()[token] == msg.sender, "BRIDGE_MISMATCH_CANNOT_REMOVE_TOKEN");
+        require(!IStarkgateService(msg.sender).isServicingToken(token), "TOKEN_IS_STILL_SERVICED");
         tokenToBridge()[token] = address(0x0);
     }
 

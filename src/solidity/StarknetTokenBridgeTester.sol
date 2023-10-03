@@ -9,4 +9,8 @@ contract StarknetTokenBridgeTester is StarknetTokenBridge {
     function setMarker(uint256 marker_) external {
         marker = marker_;
     }
+
+    function setTokenStatus(address token, TokenStatus status) external {
+        tokenSettings()[token].tokenStatus = status;
+    }
 }

@@ -10,13 +10,19 @@ interface IStarkgateRegistry {
     /**
       Add a mapping between a token and the bridge handling it.
     */
-    function enrollToken(address tokenAddress, address bridge) external;
+    function enlistToken(address tokenAddress, address bridge) external;
 
     /**
-      Deactivates token bridging.
+      Deactivates bridging of a specific token.
       A deactivated token is blocked for deposits and blocked for re-deployment.
      */
     function deactivateToken(address token) external;
+
+    /**
+      Block a specific token from being used in the StarkGate.
+      A blocked token cannot be deployed.
+      */
+    function blockToken(address token) external;
 
     /**
       Retrieves a list of bridge addresses that have facilitated withdrawals 
@@ -25,8 +31,8 @@ interface IStarkgateRegistry {
     function getWithdrawalBridges(address token) external view returns (address[] memory bridges);
 
     /**
-      Allows a bridge remove itself from the registry.
-      The calling bridge is required to implement isDepositAllowed(address) returns (bool).
+      Using this function a bridge removes enlisting of its token from the registry.
+      The bridge must implement `isServicingToken(address token)` (see `IStarkgateService`).
      */
-    function removeSelf(address token) external;
+    function selfRemove(address token) external;
 }

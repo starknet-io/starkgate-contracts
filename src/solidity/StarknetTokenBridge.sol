@@ -12,15 +12,28 @@ import "starkware/starknet/solidity/IStarknetMessaging.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "starkware/solidity/libraries/Transfers.sol";
 import "starkware/solidity/tokens/ERC20/IERC20.sol";
+import "starkware/solidity/tokens/ERC20/IERC20Metadata.sol";
 import "src/solidity/StarkgateManager.sol";
+import "src/solidity/IStarkgateManager.sol";
+import "src/solidity/IStarkgateBridge.sol";
+import "src/solidity/IStarkgateService.sol";
+import "src/solidity/IStarkgateRegistry.sol";
+import "src/solidity/utils/Felt252.sol";
+import "src/solidity/WithdrawalLimit.sol";
 
 contract StarknetTokenBridge is
+    IStarkgateBridge,
+    IStarkgateService,
     Identity,
     StarknetTokenStorage,
     StarknetBridgeConstants,
     ProxySupport
 {
     using Addresses for address;
+    using Felt252 for string;
+    event TokenEnrollmentInitiated(address token, bytes32 deploymentMsgHash);
+    event TokenDeactivated(address token);
+
     event DepositWithMessage(
         address indexed sender,
         address indexed token,
@@ -95,6 +108,7 @@ contract StarknetTokenBridge is
         (address manager_, address messagingContract_) = abi.decode(data, (address, address));
         messagingContract(messagingContract_);
         setManager(manager_);
+        WithdrawalLimit.setWithdrawLimitPct(WithdrawalLimit.DEFAULT_WITHDRAW_LIMIT_PCT);
     }
 
     function isInitialized() internal view virtual override returns (bool) {
@@ -134,14 +148,16 @@ contract StarknetTokenBridge is
         _;
     }
 
+    modifier onlyServicingToken(address token) {
+        require(isServicingToken(token), "TOKEN_NOT_SERVICED");
+        _;
+    }
+
     // Virtual functions.
     function acceptDeposit(address token, uint256 amount) internal virtual returns (uint256) {
         uint256 currentBalance = IERC20(token).balanceOf(address(this));
         require(currentBalance <= currentBalance + amount, "OVERFLOW");
-        require(
-            currentBalance + amount <= tokenSettings()[token].maxTotalBalance,
-            "MAX_BALANCE_EXCEEDED"
-        );
+        require(currentBalance + amount <= getMaxTotalBalance(token), "MAX_BALANCE_EXCEEDED");
         Transfers.transferIn(token, msg.sender, amount);
         return msg.value;
     }
@@ -163,17 +179,19 @@ contract StarknetTokenBridge is
         Only the manager, who initiates the deployment, can call this function.
 
         @param token The address of the token contract to be enrolled.
-        @param deploymentMsgHash The hash of the deployment message.
         No return value, but it updates the token's status to 'Pending' and records the deployment message and expiration time.
         Emits a `TokenEnrollmentInitiated` event when the enrollment is initiated.
         Throws an error if the sender is not the manager or if the deployment message does not exist.
      */
     // TODO : Add test.
-    function enrollToken(address token, bytes32 deploymentMsgHash) external virtual onlyManager {
+    function enrollToken(address token) external payable virtual onlyManager {
         require(
             tokenSettings()[token].tokenStatus == TokenStatus.Unknown,
             "TOKEN_ALREADY_ENROLLED"
         );
+        // send message.
+        bytes32 deploymentMsgHash = sendDeployMessage(token);
+
         require(
             messagingContract().l1ToL2Messages(deploymentMsgHash) > 0,
             "DEPLOYMENT_MESSAGE_NOT_EXIST"
@@ -181,7 +199,24 @@ contract StarknetTokenBridge is
         tokenSettings()[token].tokenStatus = TokenStatus.Pending;
         tokenSettings()[token].deploymentMsgHash = deploymentMsgHash;
         tokenSettings()[token].pendingDeploymentExpiration = block.timestamp + MAX_PENDING_DURATION;
-        // TODO : Emit event.
+        emit TokenEnrollmentInitiated(token, deploymentMsgHash);
+    }
+
+    function getStatus(address token) external view returns (TokenStatus) {
+        return tokenSettings()[token].tokenStatus;
+    }
+
+    function isServicingToken(address token) public view returns (bool) {
+        TokenStatus status = tokenSettings()[token].tokenStatus;
+        return (status == TokenStatus.Pending || status == TokenStatus.Active);
+    }
+
+    /**
+        Returns the remaining amount of withdrawal allowed for this day.
+        If the daily allowance was not yet set, it is calculated and returned.
+     */
+    function getRemainingIntradayAllowance(address token) external view returns (uint256) {
+        return WithdrawalLimit.getRemainingIntradayAllowance(token);
     }
 
     /**
@@ -199,7 +234,7 @@ contract StarknetTokenBridge is
     function deactivate(address token) external virtual onlyManager {
         require(tokenSettings()[token].tokenStatus != TokenStatus.Unknown, "UNKNOWN_TOKEN");
         tokenSettings()[token].tokenStatus = TokenStatus.Deactivated;
-        // TODO : Emit event.
+        emit TokenDeactivated(token);
     }
 
     /**
@@ -208,7 +243,6 @@ contract StarknetTokenBridge is
         Processing: Check the l1-l2 deployment message. Set status to `active` If consumed.
         If not consumed after the expected duration, it returns the status to unknown.
      */
-    // TODO : Add test.
     function checkDeploymentStatus(address token) internal skipUnlessPending(token) {
         TokenSettings storage settings = tokenSettings()[token];
         bytes32 msgHash = settings.deploymentMsgHash;
@@ -217,7 +251,8 @@ contract StarknetTokenBridge is
             settings.tokenStatus = TokenStatus.Active;
         } else if (block.timestamp > settings.pendingDeploymentExpiration) {
             delete tokenSettings()[token];
-            // TODO : self remove form registry.
+            address registry = IStarkgateManager(manager()).getRegistry();
+            IStarkgateRegistry(registry).selfRemove(token);
         }
     }
 
@@ -226,9 +261,16 @@ contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256[] calldata message
-    ) external payable {
+    ) external payable onlyServicingToken(token) {
         uint256 fee = acceptDeposit(token, amount);
-        sendMessage(token, amount, l2Recipient, message, HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR, fee);
+        sendDepositMessage(
+            token,
+            amount,
+            l2Recipient,
+            message,
+            HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
+            fee
+        );
 
         // Piggy-bag the deposit tx to check and update the status of token bridge deployment.
         checkDeploymentStatus(token);
@@ -238,10 +280,10 @@ contract StarknetTokenBridge is
         address token,
         uint256 amount,
         uint256 l2Recipient
-    ) external payable {
+    ) external payable onlyServicingToken(token) {
         uint256 fee = acceptDeposit(token, amount);
         uint256[] memory noMessage = new uint256[](0);
-        sendMessage(token, amount, l2Recipient, noMessage, HANDLE_DEPOSIT_SELECTOR, fee);
+        sendDepositMessage(token, amount, l2Recipient, noMessage, HANDLE_DEPOSIT_SELECTOR, fee);
 
         // Piggy-bag the deposit tx to check and update the status of token bridge deployment.
         checkDeploymentStatus(token);
@@ -264,37 +306,79 @@ contract StarknetTokenBridge is
         emit BridgeActivated();
     }
 
-    /*
-      Sets the maximum allowed balance of the bridge.
+    /**
+        Set/unset withdrawal limit for a token.
+     */
+    function setWithdrawalLimitApplied(address token, bool withdrawalLimitApplied_)
+        external
+        onlyGovernanceAdmin
+    {
+        tokenSettings()[token].withdrawalLimitApplied = withdrawalLimitApplied_;
+    }
 
-      Note: It is possible to set a lower value than the current total balance.
-      In this case, deposits will not be possible, until enough withdrawls are done, such that the
-      total balance is below the limit.
-    */
-    // TODO : Apply this function only for managed tokens.
+    /**
+       Set the maximum allowed balance of the bridge.
+       Note: It is possible to set a lower value than the current total balance.
+       In this case, deposits will not be possible, until enough withdrawls are done, such that the
+       total balance is below the limit.
+     */
     function setMaxTotalBalance(address token, uint256 maxTotalBalance_)
         external
         onlyGovernanceAdmin
     {
+        require(maxTotalBalance_ != 0, "INVALID_MAX_TOTAL_BALANCE");
         emit SetMaxTotalBalance(token, maxTotalBalance_);
         tokenSettings()[token].maxTotalBalance = maxTotalBalance_;
     }
+
+    // Returns the maximal allowed balance of the bridge
+    // If the value is 0, it means that there is no limit.
+    function getMaxTotalBalance(address token) public view returns (uint256) {
+        uint256 maxTotalBalance = tokenSettings()[token].maxTotalBalance;
+        return maxTotalBalance == 0 ? type(uint256).max : maxTotalBalance;
+    }
+
+    // The max depsoit limitation is deprecated.
+    // For Backward compatibility, we return maxUint256, which means no limitation.
+    function maxDeposit() public pure returns (uint256) {
+        return type(uint256).max;
+    }
+
+    function deployMessagePayload(address token) private view returns (uint256[] memory) {
+        IERC20Metadata erc20 = IERC20Metadata(token);
+        uint256[] memory payload = new uint256[](4);
+        payload[0] = uint256(uint160(token));
+        payload[1] = erc20.name().safeToFelt();
+        payload[2] = erc20.symbol().safeToFelt();
+        payload[3] = uint256(erc20.decimals());
+        return payload;
+    }
+
+    uint256 constant ARGUMENT_SIZE = 4;
+    uint256 constant MESSAGE_METADATA_SIZE = 2;
 
     function depositMessagePayload(
         address token,
         uint256 amount,
         uint256 l2Recipient,
+        bool withMessage,
         uint256[] memory message
-    ) private pure returns (uint256[] memory) {
-        uint256 HEADER_SIZE = 4;
-        uint256[] memory payload = new uint256[](HEADER_SIZE + message.length);
+    ) private view returns (uint256[] memory) {
+        uint256 MESSAGE_OFFSET = withMessage
+            ? ARGUMENT_SIZE + MESSAGE_METADATA_SIZE
+            : ARGUMENT_SIZE;
+        uint256[] memory payload = new uint256[](MESSAGE_OFFSET + message.length);
         payload[0] = l2Recipient;
         payload[1] = uint256(uint160(token));
         payload[2] = amount & (UINT256_PART_SIZE - 1);
         payload[3] = amount >> UINT256_PART_SIZE_BITS;
-        for (uint256 i = 0; i < message.length; i++) {
-            require(isFelt(message[i]), "INVALID_MESSAGE_DATA");
-            payload[i + HEADER_SIZE] = message[i];
+        if (withMessage) {
+            payload[MESSAGE_OFFSET - 2] = uint256(uint160(msg.sender));
+            payload[MESSAGE_OFFSET - 1] = message.length;
+            for (uint256 i = 0; i < message.length; i++) {
+                require(isFelt(message[i]), "INVALID_MESSAGE_DATA");
+                payload[i + MESSAGE_OFFSET] = message[i];
+            }
         }
         return payload;
     }
@@ -303,12 +387,30 @@ contract StarknetTokenBridge is
         address token,
         uint256 amount,
         uint256 l2Recipient
-    ) private pure returns (uint256[] memory) {
+    ) private view returns (uint256[] memory) {
         uint256[] memory noMessage = new uint256[](0);
-        return depositMessagePayload(token, amount, l2Recipient, noMessage);
+        return
+            depositMessagePayload(
+                token,
+                amount,
+                l2Recipient,
+                false, /*without message*/
+                noMessage
+            );
     }
 
-    function sendMessage(
+    function sendDeployMessage(address token) internal onlyActive returns (bytes32) {
+        require(msg.value >= MIN_DEPLOYMENT_FEE, "INSUFFICIENT_MSG_VALUE");
+
+        (bytes32 deploymentMsgHash, ) = messagingContract().sendMessageToL2{value: msg.value}(
+            l2TokenBridge(),
+            HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+            deployMessagePayload(token)
+        );
+        return deploymentMsgHash;
+    }
+
+    function sendDepositMessage(
         address token,
         uint256 amount,
         uint256 l2Recipient,
@@ -320,10 +422,11 @@ contract StarknetTokenBridge is
         require(msg.value >= fee, "INSUFFICIENT_MSG_VALUE");
         require(isValidL2Address(l2Recipient), "L2_ADDRESS_OUT_OF_RANGE");
 
+        bool isWithMsg = selector == HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR;
         (, uint256 nonce) = messagingContract().sendMessageToL2{value: fee}(
             l2TokenBridge(),
             selector,
-            depositMessagePayload(token, amount, l2Recipient, message)
+            depositMessagePayload(token, amount, l2Recipient, isWithMsg, message)
         );
         require(depositors()[nonce] == address(0x0), "DEPOSIT_ALREADY_REGISTERED");
         depositors()[nonce] = msg.sender;
@@ -367,6 +470,8 @@ contract StarknetTokenBridge is
         transferOutFunds(token, amount, recipient);
 
         emit Withdrawal(recipient, token, amount);
+        if (!tokenSettings()[token].withdrawalLimitApplied) return;
+        WithdrawalLimit.consumeWithdrawQuota(token, amount);
     }
 
     function withdraw(address token, uint256 amount) external {
@@ -412,7 +517,13 @@ contract StarknetTokenBridge is
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
             HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-            depositMessagePayload(token, amount, l2Recipient, message),
+            depositMessagePayload(
+                token,
+                amount,
+                l2Recipient,
+                true, /*with message*/
+                message
+            ),
             nonce
         );
 
@@ -436,7 +547,13 @@ contract StarknetTokenBridge is
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
             HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-            depositMessagePayload(token, amount, l2Recipient, message),
+            depositMessagePayload(
+                token,
+                amount,
+                l2Recipient,
+                true, /*with message*/
+                message
+            ),
             nonce
         );
 

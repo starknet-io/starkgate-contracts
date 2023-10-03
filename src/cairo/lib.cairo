@@ -14,3 +14,5 @@ mod permissioned_erc20;
 mod test_utils;
 mod token_bridge_test;
 mod permissioned_token_test;
+mod stub_msg_receiver;
+mod replaceability_test;

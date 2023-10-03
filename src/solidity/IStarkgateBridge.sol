@@ -3,7 +3,13 @@ pragma solidity ^0.8.0;
 
 interface IStarkgateBridge {
     /**
-      Deploys a bridge for the specified token address.
+       Enrolls a token in the Starknet Token Bridge system.
     */
-    function deployBridge(address tokenAddress) external;
+    function enrollToken(address token) external payable;
+
+    /**
+      Deactivates token bridging.
+      Deactivated token does not accept deposits.
+     */
+    function deactivate(address token) external;
 }

@@ -33,7 +33,6 @@ trait IERC20Camel<TState> {
     fn approve(ref self: TState, spender: ContractAddress, amount: u256) -> bool;
 }
 
-#[starknet::interface]
 trait IERC20CamelOnly<TState> {
     fn totalSupply(self: @TState) -> u256;
     fn balanceOf(self: @TState, account: ContractAddress) -> u256;

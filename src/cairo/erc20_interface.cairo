@@ -21,3 +21,12 @@ trait IERC20<TContractState> {
     ) -> bool;
 }
 
+#[starknet::interface]
+trait IERC20CamelOnly<TState> {
+    fn totalSupply(self: @TState) -> u256;
+    fn balanceOf(self: @TState, account: ContractAddress) -> u256;
+    fn transferFrom(
+        ref self: TState, sender: ContractAddress, recipient: ContractAddress, amount: u256
+    ) -> bool;
+}
+

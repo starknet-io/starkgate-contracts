@@ -5,7 +5,7 @@ import "starkware/solidity/libraries/NamedStorage.sol";
 import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
 abstract contract StarknetTokenStorage {
-    // Random storage slot tags.
+    // Named storage slot tags.
     string internal constant L2_TOKEN_TAG = "STARKNET_TOKEN_BRIDGE_L2_TOKEN_CONTRACT";
     string internal constant MANAGER_TAG = "STARKNET_TOKEN_BRIDGE_MANAGER_SLOT_TAG";
     string internal constant MESSAGING_CONTRACT_TAG = "STARKNET_TOKEN_BRIDGE_MESSAGING_CONTRACT";
@@ -24,6 +24,7 @@ abstract contract StarknetTokenStorage {
         bytes32 deploymentMsgHash;
         uint256 pendingDeploymentExpiration;
         uint256 maxTotalBalance;
+        bool withdrawalLimitApplied;
     }
 
     // Slot = Web3.keccak(text="TokenSettings_Storage_Slot").
