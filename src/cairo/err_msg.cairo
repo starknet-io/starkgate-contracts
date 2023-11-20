@@ -1,0 +1,29 @@
+mod ERC20Errors {
+    const APPROVE_FROM_ZERO: felt252 = 'ERC20: approve from 0';
+    const APPROVE_TO_ZERO: felt252 = 'ERC20: approve to 0';
+    const TRANSFER_FROM_ZERO: felt252 = 'ERC20: transfer from 0';
+    const TRANSFER_TO_ZERO: felt252 = 'ERC20: transfer to 0';
+    const BURN_FROM_ZERO: felt252 = 'ERC20: burn from 0';
+    const MINT_TO_ZERO: felt252 = 'ERC20: mint to 0';
+}
+
+mod AccessErrors {
+    const INVALID_MINTER: felt252 = 'INVALID_MINTER_ADDRESS';
+    const CALLER_MISSING_ROLE: felt252 = 'CALLER_IS_MISSING_ROLE';
+    const ZERO_ADDRESS: felt252 = 'INVALID_ACCOUNT_ADDRESS';
+    const ALREADY_INITIALIZED: felt252 = 'ROLES_ALREADY_INITIALIZED';
+    const ZERO_ADDRESS_GOV_ADMIN: felt252 = 'ZERO_PROVISIONAL_GOV_ADMIN';
+    const ONLY_UPGRADE_GOVERNOR: felt252 = 'ONLY_UPGRADE_GOVERNOR';
+    const ONLY_MINTER: felt252 = 'MINTER_ONLY';
+    const ONLY_SELF_CAN_RENOUNCE: felt252 = 'ONLY_SELF_CAN_RENOUNCE';
+    const GOV_ADMIN_CANNOT_RENOUNCE: felt252 = 'GOV_ADMIN_CANNOT_SELF_REMOVE';
+}
+
+mod ReplaceErrors {
+    const FINALIZED: felt252 = 'FINALIZED';
+    const UNKNOWN_IMPLEMENTATION: felt252 = 'UNKNOWN_IMPLEMENTATION';
+    const NOT_ENABLED_YET: felt252 = 'NOT_ENABLED_YET';
+    const IMPLEMENTATION_EXPIRED: felt252 = 'IMPLEMENTATION_EXPIRED';
+    const EIC_LIB_CALL_FAILED: felt252 = 'EIC_LIB_CALL_FAILED';
+    const REPLACE_CLASS_HASH_FAILED: felt252 = 'REPLACE_CLASS_HASH_FAILED';
+}

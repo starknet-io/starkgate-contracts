@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts for Cairo v0.7.0 (utils/nonces.cairo)
+// OpenZeppelin Contracts for Cairo v0.8.0-beta.1 (utils/nonces.cairo)
 
 #[starknet::contract]
 mod Nonces {
@@ -7,7 +7,7 @@ mod Nonces {
 
     #[storage]
     struct Storage {
-        _nonces: LegacyMap<ContractAddress, felt252>
+        Nonces_nonces: LegacyMap<ContractAddress, felt252>
     }
 
     mod Errors {
@@ -17,18 +17,18 @@ mod Nonces {
     /// Returns the next unused nonce for an address.
     #[external(v0)]
     fn nonces(self: @ContractState, owner: ContractAddress) -> felt252 {
-        self._nonces.read(owner)
+        self.Nonces_nonces.read(owner)
     }
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
         /// Consumes a nonce, returns the current value, and increments nonce.
         fn use_nonce(ref self: ContractState, owner: ContractAddress) -> felt252 {
-            // For each account, the nonce has an initial value of 0, 
-            // can only be incremented by one, and cannot be
-            // decremented or reset. This guarantees that the nonce never overflows.
-            let nonce = self._nonces.read(owner);
-            self._nonces.write(owner, nonce + 1);
+            // For each account, the nonce has an initial value of 0,
+            // can only be incremented by one, and cannot be decremented or reset.
+            // This guarantees that the nonce never overflows.
+            let nonce = self.Nonces_nonces.read(owner);
+            self.Nonces_nonces.write(owner, nonce + 1);
             nonce
         }
 

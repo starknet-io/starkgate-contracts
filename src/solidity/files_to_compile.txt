@@ -1,10 +1,14 @@
 src/solidity/FeltToStrTester.sol
 src/solidity/StarknetTokenBridgeTester.sol
 src/solidity/StarknetEthBridge.sol
+src/solidity/StarknetERC20Bridge.sol
 src/solidity/StarknetTokenBridge.sol
 src/solidity/StarknetEthBridgeTester.sol
+src/solidity/StarknetERC20BridgeTester.sol
+src/solidity/SelfRemoveTester.sol
 src/solidity/StarkgateRegistry.sol
 src/solidity/StarkgateManager.sol
 starkware/solidity/test_contracts/TestERC20.sol
 starkware/solidity/upgrade/Proxy.sol
 starkware/starknet/testing/MockStarknetMessaging.sol
+src/solidity/StarkgateUpgradeAssistExternalInitializer.sol

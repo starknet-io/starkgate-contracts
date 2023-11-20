@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.0;
 
+import "starkware/cairo/eth/CairoConstants.sol";
+
 /**
  * @dev String to felt functions.
  *
@@ -67,5 +69,15 @@ library Felt252 {
 
     function min(uint256 a, uint256 b) private pure returns (uint256) {
         return a < b ? a : b;
+    }
+}
+
+library UintFelt252 {
+    function isValidL2Address(uint256 l2Address) internal pure returns (bool) {
+        return (l2Address != 0 && isFelt(l2Address));
+    }
+
+    function isFelt(uint256 maybeFelt) internal pure returns (bool) {
+        return (maybeFelt < CairoConstants.FIELD_PRIME);
     }
 }

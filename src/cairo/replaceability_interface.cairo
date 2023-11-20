@@ -49,3 +49,24 @@ trait IReplaceable<TContractState> {
     fn replace_to(ref self: TContractState, implementation_data: ImplementationData);
 }
 
+#[derive(Copy, Drop, PartialEq, starknet::Event)]
+struct ImplementationAdded {
+    implementation_data: ImplementationData,
+}
+
+
+#[derive(Copy, Drop, PartialEq, starknet::Event)]
+struct ImplementationRemoved {
+    implementation_data: ImplementationData,
+}
+
+
+#[derive(Copy, Drop, PartialEq, starknet::Event)]
+struct ImplementationReplaced {
+    implementation_data: ImplementationData,
+}
+
+#[derive(Copy, Drop, PartialEq, starknet::Event)]
+struct ImplementationFinalized {
+    impl_hash: ClassHash,
+}

@@ -59,7 +59,6 @@ else
     exit 1
 fi
 
-
 printf "${YELLOW}Pytest...\n"
 pytest src/solidity -sv
 if [ $? -eq 0 ]; then

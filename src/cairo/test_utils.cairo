@@ -5,9 +5,10 @@ mod test_utils {
     use traits::TryInto;
     use option::OptionTrait;
     use serde::Serde;
-    use starknet::{ContractAddress, syscalls::deploy_syscall};
-    use super::super::permissioned_erc20::PermissionedERC20;
+    use starknet::{ContractAddress, EthAddress, syscalls::deploy_syscall, get_contract_address};
+    use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
     use openzeppelin::token::erc20::presets::erc20votes::ERC20VotesPreset;
+    use openzeppelin::token::erc20_v070::erc20::ERC20;
 
     use super::super::mintable_token_interface::{
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
@@ -16,7 +17,18 @@ mod test_utils {
     use array::SpanTrait;
     use super::super::token_bridge::TokenBridge;
     use super::super::token_bridge::TokenBridge::{
-        Event, RoleAdminChanged, RoleGranted, RoleRevoked
+        Event, WithdrawalLimitDisabled, WithdrawalLimitEnabled, WithdrawInitiated
+    };
+
+    use super::super::token_test_setup::TokenTestSetup;
+    use super::super::token_test_setup_interface::{
+        ITokenTestSetupDispatcher, ITokenTestSetupDispatcherTrait
+    };
+    use super::super::stub_msg_receiver::StubMsgReceiver;
+
+    use super::super::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
+    use super::super::token_bridge_admin_interface::{
+        ITokenBridgeAdminDispatcher, ITokenBridgeAdminDispatcherTrait
     };
 
     use super::super::replaceability_interface::{
@@ -24,18 +36,41 @@ mod test_utils {
     };
     use super::super::roles_interface::{IRolesDispatcher, IRolesDispatcherTrait};
     use super::super::access_control_interface::{
-        IAccessControlDispatcher, IAccessControlDispatcherTrait, RoleId
+        IAccessControlDispatcher, IAccessControlDispatcherTrait, RoleId, RoleAdminChanged,
+        RoleGranted, RoleRevoked,
     };
 
     const DEFAULT_UPGRADE_DELAY: u64 = 12345;
+
+    const DEFAULT_L1_BRIDGE_ETH_ADDRESS: felt252 = 5;
+    const DEFAULT_L1_RECIPIENT: felt252 = 12;
+    const DEFAULT_L1_TOKEN_ETH_ADDRESS: felt252 = 1337;
+
+    const DEFAULT_INITIAL_SUPPLY_LOW: u128 = 1000;
+    const DEFAULT_INITIAL_SUPPLY_HIGH: u128 = 0;
+
+    const NAME: felt252 = 'NAME';
+    const SYMBOL: felt252 = 'SYMBOL';
+    const DECIMALS: u8 = 18;
+
+
+    fn get_token_bridge(token_bridge_address: ContractAddress) -> ITokenBridgeDispatcher {
+        ITokenBridgeDispatcher { contract_address: token_bridge_address }
+    }
+
+    fn get_token_bridge_admin(
+        token_bridge_address: ContractAddress
+    ) -> ITokenBridgeAdminDispatcher {
+        ITokenBridgeAdminDispatcher { contract_address: token_bridge_address }
+    }
 
 
     fn get_roles(token_bridge_address: ContractAddress) -> IRolesDispatcher {
         IRolesDispatcher { contract_address: token_bridge_address }
     }
 
-    fn get_replaceable(token_bridge_address: ContractAddress) -> IReplaceableDispatcher {
-        IReplaceableDispatcher { contract_address: token_bridge_address }
+    fn get_replaceable(replaceable_address: ContractAddress) -> IReplaceableDispatcher {
+        IReplaceableDispatcher { contract_address: replaceable_address }
     }
 
     fn get_access_control(token_bridge_address: ContractAddress) -> IAccessControlDispatcher {
@@ -43,10 +78,9 @@ mod test_utils {
     }
 
 
-    fn get_erc20_token(l2_token_address: ContractAddress) -> IERC20Dispatcher {
-        IERC20Dispatcher { contract_address: l2_token_address }
+    fn get_erc20_token(l2_token: ContractAddress) -> IERC20Dispatcher {
+        IERC20Dispatcher { contract_address: l2_token }
     }
-
 
     fn caller() -> ContractAddress {
         starknet::contract_address_const::<15>()
@@ -86,25 +120,33 @@ mod test_utils {
         Event::RoleAdminChanged(RoleAdminChanged { role, previous_admin_role, new_admin_role })
     }
 
-
-    fn get_l2_token_deployment_calldata(
-        initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
-    ) -> Span<felt252> {
-        // Set the constructor calldata.
-        let mut calldata = ArrayTrait::new();
-        'NAME'.serialize(ref calldata);
-        'SYMBOL'.serialize(ref calldata);
-        18_u8.serialize(ref calldata);
-        initial_supply.serialize(ref calldata);
-        initial_owner.serialize(ref calldata);
-        permitted_minter.serialize(ref calldata);
-
-        calldata.span()
+    // TODO - Delete this once this can be a const.
+    fn default_amount() -> u256 {
+        u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
     }
 
 
-    fn get_l2_votes_token_deployment_calldata(
-        initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
+    fn stock_erc20_class_hash() -> ClassHash {
+        ERC20::TEST_CLASS_HASH.try_into().unwrap()
+    }
+
+    fn votes_erc20_class_hash() -> ClassHash {
+        ERC20VotesPreset::TEST_CLASS_HASH.try_into().unwrap()
+    }
+
+    fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
+        (
+            EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS },
+            EthAddress { address: DEFAULT_L1_TOKEN_ETH_ADDRESS },
+            EthAddress { address: DEFAULT_L1_RECIPIENT }
+        )
+    }
+
+    fn get_l2_token_deployment_calldata(
+        initial_owner: ContractAddress,
+        permitted_minter: ContractAddress,
+        token_gov: ContractAddress,
+        initial_supply: u256,
     ) -> Span<felt252> {
         // Set the constructor calldata.
         let mut calldata = ArrayTrait::new();
@@ -114,57 +156,137 @@ mod test_utils {
         initial_supply.serialize(ref calldata);
         initial_owner.serialize(ref calldata);
         permitted_minter.serialize(ref calldata);
-        'WEN_TOKEN_DAPP'.serialize(ref calldata);
-        '1.0.0'.serialize(ref calldata);
+        token_gov.serialize(ref calldata);
         DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
         calldata.span()
     }
 
+    fn get_l2_votes_token_deployment_calldata(
+        initial_owner: ContractAddress,
+        permitted_minter: ContractAddress,
+        token_gov: ContractAddress,
+        initial_supply: u256,
+    ) -> Span<felt252> {
+        // Set the constructor calldata.
+        let mut calldata = ArrayTrait::new();
+        'NAME'.serialize(ref calldata);
+        'SYMBOL'.serialize(ref calldata);
+        18_u8.serialize(ref calldata);
+        initial_supply.serialize(ref calldata);
+        initial_owner.serialize(ref calldata);
+        permitted_minter.serialize(ref calldata);
+        token_gov.serialize(ref calldata);
+        DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
+        calldata.span()
+    }
+
+    fn simple_deploy_l2_token() -> ContractAddress {
+        let permitted_minter = starknet::contract_address_const::<9256>();
+        let initial_owner = initial_owner();
+        deploy_l2_token(:initial_owner, :permitted_minter, initial_supply: 1000_u256)
+    }
 
     fn deploy_l2_token(
         initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
     ) -> ContractAddress {
         let calldata = get_l2_token_deployment_calldata(
-            :initial_owner, :permitted_minter, :initial_supply
-        );
-
-        // Deploy the contract.
-        let (l2_token_address, _) = deploy_syscall(
-            PermissionedERC20::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata, false
-        )
-            .unwrap();
-        l2_token_address
-    }
-
-
-    fn deploy_l2_votes_token(
-        initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
-    ) -> ContractAddress {
-        let calldata = get_l2_votes_token_deployment_calldata(
-            :initial_owner, :permitted_minter, :initial_supply
+            :initial_owner, :permitted_minter, token_gov: caller(), :initial_supply
         );
 
         // Set the caller address for all the functions calls (except the constructor).
         set_contract_address_as_caller();
 
-        // Set the caller address for the constructor.
-        starknet::testing::set_caller_address(address: caller());
-
         // Deploy the contract.
-        let (l2_votes_token_address, _) = deploy_syscall(
-            ERC20VotesPreset::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata, false
+        let (l2_token, _) = deploy_syscall(
+            ERC20::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata, false
         )
             .unwrap();
-        l2_votes_token_address
+        l2_token
+    }
+
+    fn deploy_l2_votes_token(
+        initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
+    ) -> ContractAddress {
+        let calldata = get_l2_votes_token_deployment_calldata(
+            :initial_owner, :permitted_minter, token_gov: permitted_minter, :initial_supply
+        );
+
+        // Set the caller address for all the functions calls (except the constructor).
+        set_contract_address_as_caller();
+
+        // Deploy the contract.
+        let (l2_votes_token, _) = deploy_syscall(votes_erc20_class_hash(), 0, calldata, false)
+            .unwrap();
+        l2_votes_token
+    }
+
+    fn deploy_upgraded_legacy_bridge(
+        l1_token: EthAddress, l2_recipient: ContractAddress, token_mismatch: bool
+    ) -> ContractAddress {
+        // Deploy the contract.
+        let mut calldata = array![];
+        let (token_test_setup_address, _) = deploy_syscall(
+            TokenTestSetup::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata.span(), false
+        )
+            .unwrap();
+        let token_test_setup = ITokenTestSetupDispatcher {
+            contract_address: token_test_setup_address
+        };
+
+        if token_mismatch {
+            token_test_setup
+                .set_l2_token_and_replace(
+                    :l1_token,
+                    l2_token: starknet::contract_address_const::<13>(),
+                    l2_token_for_mapping: starknet::contract_address_const::<14>()
+                );
+            return token_test_setup_address;
+        }
+
+        // If token_mismatch is false, deploy an l2 token, set the relevant storage variables and
+        // then replace to the token bridge contract.
+        let l2_token = deploy_l2_token(
+            initial_owner: l2_recipient,
+            permitted_minter: token_test_setup_address,
+            initial_supply: 1000
+        );
+
+        token_test_setup
+            .set_l2_token_and_replace(:l1_token, :l2_token, l2_token_for_mapping: l2_token);
+
+        // Since a a test contract was replaced to the brigde, the bridge constructor was not
+        // called; hence _initialize_roles was not called.
+        // Set the caller address for the _initialize_roles - GOVERNANCE_ADMIN role will be granted
+        // to the caller.
+        starknet::testing::set_caller_address(address: caller());
+        // Set the token_test_setup_address (token_bridge_address) to be the contract address since
+        //  an internal funciton is being called later.
+        starknet::testing::set_contract_address(address: token_test_setup_address);
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state);
+
+        token_test_setup_address
     }
 
 
-    fn get_mintable_token(l2_token_address: ContractAddress) -> IMintableTokenDispatcher {
-        IMintableTokenDispatcher { contract_address: l2_token_address }
+    fn deploy_stub_msg_receiver() -> ContractAddress {
+        // Set the constructor calldata.
+        let mut calldata = array![];
+
+        // Deploy the contract.
+        let (stub_msg_receiver_address, _) = deploy_syscall(
+            StubMsgReceiver::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata.span(), false
+        )
+            .unwrap();
+        stub_msg_receiver_address
+    }
+
+
+    fn get_mintable_token(l2_token: ContractAddress) -> IMintableTokenDispatcher {
+        IMintableTokenDispatcher { contract_address: l2_token }
     }
 
     // Returns the last event in the queue. After this call, the evnet queue is empty.
-
     fn pop_and_deserialize_last_event<T, impl TEvent: starknet::Event<T>, impl TDrop: Drop<T>>(
         address: ContractAddress
     ) -> T {
@@ -172,12 +294,8 @@ mod test_utils {
             .expect('Event deserializion failed');
         loop {
             match starknet::testing::pop_log::<T>(:address) {
-                Option::Some(log) => {
-                    prev_log = log;
-                },
-                Option::None(()) => {
-                    break;
-                },
+                Option::Some(log) => { prev_log = log; },
+                Option::None(()) => { break; },
             };
         };
         prev_log
@@ -185,7 +303,6 @@ mod test_utils {
 
 
     // Returns the last k raw events. After this call, the evnet queue is empty.
-
     fn pop_last_k_events(
         address: ContractAddress, mut k: u32
     ) -> Span::<(Span::<felt252>, Span::<felt252>)> {
@@ -194,12 +311,8 @@ mod test_utils {
         loop {
             let log = starknet::testing::pop_log_raw(address: address);
             match log {
-                Option::Some(_) => {
-                    events.append(log.unwrap());
-                },
-                Option::None(()) => {
-                    break;
-                },
+                Option::Some(_) => { events.append(log.unwrap()); },
+                Option::None(()) => { break; },
             };
         };
         let n_evnets = events.len();
@@ -253,10 +366,25 @@ mod test_utils {
         );
     }
 
+    fn set_caller_as_upgrade_governor(replaceable_address: ContractAddress) {
+        let contract_roles = get_roles(token_bridge_address: replaceable_address);
+        contract_roles.register_upgrade_governor(account: caller());
+    }
 
-    fn set_caller_as_upgrade_governor(token_bridge_address: ContractAddress) {
+    fn set_caller_as_app_role_admin_app_governor(token_bridge_address: ContractAddress) {
         let token_bridge_roles = get_roles(:token_bridge_address);
-        token_bridge_roles.register_upgrade_governor(account: caller());
+        token_bridge_roles.register_app_role_admin(account: caller());
+        token_bridge_roles.register_app_governor(account: caller());
+    }
+
+    fn set_caller_as_security_admin(token_bridge_address: ContractAddress) {
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_security_admin(account: caller());
+    }
+
+    fn set_caller_as_security_agent(token_bridge_address: ContractAddress) {
+        let token_bridge_roles = get_roles(:token_bridge_address);
+        token_bridge_roles.register_security_agent(account: caller());
     }
 
     fn deploy_token_bridge() -> ContractAddress {
@@ -276,5 +404,160 @@ mod test_utils {
         )
             .unwrap();
         token_bridge_address
+    }
+
+    fn withdraw_and_validate(
+        token_bridge_address: ContractAddress,
+        withdraw_from: ContractAddress,
+        l1_recipient: EthAddress,
+        l1_token: EthAddress,
+        amount_to_withdraw: u256,
+    ) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+
+        let l2_token = token_bridge.get_l2_token(:l1_token);
+        let erc20_token = get_erc20_token(:l2_token);
+        let total_supply = erc20_token.total_supply();
+        let balance_before = erc20_token.balance_of(withdraw_from);
+
+        starknet::testing::set_contract_address(address: withdraw_from);
+        token_bridge.initiate_token_withdraw(:l1_token, :l1_recipient, amount: amount_to_withdraw);
+        // Validate the new balance and total supply.
+        assert(
+            erc20_token.balance_of(withdraw_from) == balance_before - amount_to_withdraw,
+            'INCONSISTENT_WITHDRAW_BALANCE'
+        );
+        assert(
+            erc20_token.total_supply() == total_supply - amount_to_withdraw,
+            'INIT_WITHDRAW_SUPPLY_ERROR'
+        );
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        assert(
+            emitted_event == Event::WithdrawInitiated(
+                WithdrawInitiated {
+                    l1_token: l1_token,
+                    l1_recipient: l1_recipient,
+                    amount: amount_to_withdraw,
+                    caller_address: withdraw_from
+                }
+            ),
+            'WithdrawInitiated Error'
+        );
+    }
+
+    fn enable_withdrawal_limit(token_bridge_address: ContractAddress, l1_token: EthAddress) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token = token_bridge.get_l2_token(:l1_token);
+        set_contract_address_as_caller();
+        set_caller_as_security_agent(:token_bridge_address);
+        let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+        token_bridge_admin.enable_withdrawal_limit(:l1_token);
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        let sender = caller();
+        assert(
+            emitted_event == Event::WithdrawalLimitEnabled(
+                WithdrawalLimitEnabled { sender, l1_token }
+            ),
+            'WithdrawalLimitEnabled Error'
+        );
+    }
+
+    fn disable_withdrawal_limit(token_bridge_address: ContractAddress, l1_token: EthAddress) {
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token = token_bridge.get_l2_token(:l1_token);
+        set_contract_address_as_caller();
+        set_caller_as_security_admin(:token_bridge_address);
+        let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+        token_bridge_admin.disable_withdrawal_limit(:l1_token);
+
+        let emitted_event = pop_and_deserialize_last_event(address: token_bridge_address);
+        let sender = caller();
+        assert(
+            emitted_event == Event::WithdrawalLimitDisabled(
+                WithdrawalLimitDisabled { sender, l1_token }
+            ),
+            'WithdrawalLimitDisabled Error'
+        );
+    }
+
+    fn _get_daily_withdrawal_limit(
+        token_bridge_address: ContractAddress, l1_token: EthAddress
+    ) -> u256 {
+        let orig = get_contract_address();
+        let token_bridge = get_token_bridge(:token_bridge_address);
+        let l2_token = token_bridge.get_l2_token(:l1_token);
+        starknet::testing::set_contract_address(address: token_bridge_address);
+        let token_bridge_state = TokenBridge::contract_state_for_testing();
+        let daily_withdrawal_limit =
+            TokenBridge::WithdrawalLimitInternal::get_daily_withdrawal_limit(
+            @token_bridge_state, :l2_token
+        );
+        starknet::testing::set_contract_address(address: orig);
+        daily_withdrawal_limit
+    }
+
+    fn prepare_bridge_for_deploy_token(
+        token_bridge_address: ContractAddress, l1_bridge_address: EthAddress
+    ) {
+        let orig = get_contract_address();
+        let token_bridge = get_token_bridge(:token_bridge_address);
+
+        set_contract_address_as_caller();
+        // Get the token bridge admin interface and set the caller as the app governer (and as App
+        // Role Admin).
+        let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+        set_caller_as_app_role_admin_app_governor(:token_bridge_address);
+
+        token_bridge_admin.set_l1_bridge(:l1_bridge_address);
+
+        // Set ERC20 class hash.
+        token_bridge_admin.set_erc20_class_hash(stock_erc20_class_hash());
+
+        // Set l2 token gov on the bridge.
+        token_bridge_admin.set_l2_token_governance(caller());
+
+        starknet::testing::set_contract_address(address: orig);
+    }
+
+    // Prepares the bridge for deploying a new token and then deploys it.
+    fn deploy_new_token(
+        token_bridge_address: ContractAddress, l1_bridge_address: EthAddress, l1_token: EthAddress
+    ) {
+        prepare_bridge_for_deploy_token(:token_bridge_address, :l1_bridge_address);
+        // Set the contract address to be of the token bridge, so we can simulate l1 message handler
+        // invocations on the token bridge contract instance deployed at that address.
+        starknet::testing::set_contract_address(token_bridge_address);
+
+        // Deploy token contract.
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::handle_token_enrollment(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            :l1_token,
+            name: NAME,
+            symbol: SYMBOL,
+            decimals: DECIMALS
+        );
+    }
+
+    // Prepares the bridge for deploying a new token and then deploys it and do a first deposit into
+    // it.
+    fn deploy_new_token_and_deposit(
+        token_bridge_address: ContractAddress,
+        l1_bridge_address: EthAddress,
+        l1_token: EthAddress,
+        l2_recipient: ContractAddress,
+        amount_to_deposit: u256
+    ) {
+        deploy_new_token(:token_bridge_address, :l1_bridge_address, :l1_token);
+
+        let mut token_bridge_state = TokenBridge::contract_state_for_testing();
+        TokenBridge::handle_token_deposit(
+            ref token_bridge_state,
+            from_address: l1_bridge_address.into(),
+            :l1_token,
+            :l2_recipient,
+            amount: amount_to_deposit
+        );
     }
 }

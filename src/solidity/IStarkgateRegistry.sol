@@ -5,18 +5,12 @@ interface IStarkgateRegistry {
     /**
       Returns the bridge that handles the given token.
     */
-    function getBridge(address tokenAddress) external view returns (address);
+    function getBridge(address token) external view returns (address);
 
     /**
       Add a mapping between a token and the bridge handling it.
     */
-    function enlistToken(address tokenAddress, address bridge) external;
-
-    /**
-      Deactivates bridging of a specific token.
-      A deactivated token is blocked for deposits and blocked for re-deployment.
-     */
-    function deactivateToken(address token) external;
+    function enlistToken(address token, address bridge) external;
 
     /**
       Block a specific token from being used in the StarkGate.

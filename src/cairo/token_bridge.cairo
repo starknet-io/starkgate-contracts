@@ -6,10 +6,12 @@ use zeroable::Zeroable;
 
 #[starknet::contract]
 mod TokenBridge {
-    use integer::BoundedInt;
-    use super::super::roles_interface::{
-        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN, UPGRADE_GOVERNOR
+    use super::super::err_msg::AccessErrors::{
+        CALLER_MISSING_ROLE, ZERO_ADDRESS, ALREADY_INITIALIZED, ONLY_UPGRADE_GOVERNOR
     };
+    use super::super::err_msg::ERC20Errors as ERC20Errors;
+    use super::super::err_msg::ReplaceErrors as ReplaceErrors;
+    use integer::BoundedInt;
     use core::result::ResultTrait;
     use starknet::SyscallResultTrait;
     use array::ArrayTrait;
@@ -28,8 +30,20 @@ mod TokenBridge {
     use super::super::token_bridge_interface::{
         ITokenBridge, ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait
     };
-    use super::super::access_control_interface::{IAccessControl, RoleId};
-    use super::super::roles_interface::IRoles;
+    use super::super::token_bridge_admin_interface::{
+        ITokenBridgeAdmin, ITokenBridgeAdminDispatcher, ITokenBridgeAdminDispatcherTrait
+    };
+    use super::super::access_control_interface::{
+        IAccessControl, RoleId, RoleAdminChanged, RoleGranted, RoleRevoked
+    };
+    use super::super::roles_interface::{
+        IRoles, APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN,
+        UPGRADE_GOVERNOR, SECURITY_ADMIN, SECURITY_AGENT, SecurityAdminAdded, SecurityAdminRemoved,
+        SecurityAgentAdded, SecurityAgentRemoved, AppGovernorAdded, AppGovernorRemoved,
+        AppRoleAdminAdded, AppRoleAdminRemoved, GovernanceAdminAdded, GovernanceAdminRemoved,
+        OperatorAdded, OperatorRemoved, TokenAdminAdded, TokenAdminRemoved, UpgradeGovernorAdded,
+        UpgradeGovernorRemoved,
+    };
     use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use super::super::mintable_token_interface::{
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
@@ -37,7 +51,8 @@ mod TokenBridge {
 
     use super::super::replaceability_interface::{
         ImplementationData, IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait,
-        IEICInitializable, EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION
+        IEICInitializable, EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION, ImplementationAdded,
+        ImplementationRemoved, ImplementationReplaced, ImplementationFinalized
     };
 
     use traits::{Into, TryInto};
@@ -47,9 +62,11 @@ mod TokenBridge {
     const CONTRACT_IDENTITY: felt252 = 'STARKGATE';
     const CONTRACT_VERSION: felt252 = 2;
 
-    // TODO - add getter and setter for this.
-    const DAILY_WITHDRAW_LIMIT_PCT: u256 = 10;
+    const DEFAULT_DAILY_WITHDRAW_LIMIT_PCT: u8 = 10;
+
     const SECONDS_IN_DAY: u64 = 86400;
+    const DEFAULT_UPGRADE_DELAY: u64 = 0;
+
 
     // When storing the remaining quota for today, we add 1 to the value. This is because we want
     // that 0 will mean that it was not set yet.
@@ -60,23 +77,19 @@ mod TokenBridge {
         480768629706071032051132431608482761444818804172389941599997570483678682398;
 
 
-    impl LegacyHashEthAddress of LegacyHash<starknet::EthAddress> {
-        fn hash(state: felt252, value: starknet::EthAddress) -> felt252 {
-            LegacyHash::<felt252>::hash(state, value.into())
-        }
-    }
-
     #[storage]
     struct Storage {
         // --- Token Bridge ---
         // The L1 bridge address. Zero when unset.
         l1_bridge: EthAddress,
-        // The erc20 class hash
+        // The erc20 class hash.
         erc20_class_hash: ClassHash,
+        // Governor of deployed L2 Tokens.
+        l2_token_governance: ContractAddress,
         // Mapping from between l1<->l2 token addresses.
         l1_l2_token_map: LegacyMap<EthAddress, ContractAddress>,
         l2_l1_token_map: LegacyMap<ContractAddress, EthAddress>,
-        // Mapping between l2_token_address => bool that defines if withdrawal limit is applied on
+        // Mapping between l2_token => bool that defines if withdrawal limit is applied on
         // the l2_token. By default withdrawal limit is not applied.
         withdrawal_limit_applied: LegacyMap<ContractAddress, bool>,
         // For each token and day, stores the amount that can still be withdrawn from this token
@@ -84,6 +97,12 @@ mod TokenBridge {
         // currently there was no withdrawal from this token in this day or there were withdrawals
         // but the limit flag was turned off.
         remaining_intraday_withdraw_quota: LegacyMap<(ContractAddress, u64), u256>,
+        // The daily withdrawal limit percentage.
+        daily_withdrawal_limit_pct: u8,
+        // `l2_token` is a legacy storage variable from older versions.
+        // It's expected to be non-empty only in a case of an upgrade from such a version.
+        //  This case also implies that this is the only token that is served by the bridge.
+        l2_token: ContractAddress,
         // --- Replaceability ---
         // Delay in seconds before performing an upgrade.
         upgrade_delay: u64,
@@ -109,7 +128,13 @@ mod TokenBridge {
         #[event]
         Erc20ClassHashStored: Erc20ClassHashStored,
         #[event]
+        L2TokenGovernanceChanged: L2TokenGovernanceChanged,
+        #[event]
+        withdraw_initiated: withdraw_initiated,
+        #[event]
         WithdrawInitiated: WithdrawInitiated,
+        #[event]
+        deposit_handled: deposit_handled,
         #[event]
         DepositHandled: DepositHandled,
         #[event]
@@ -117,9 +142,9 @@ mod TokenBridge {
         #[event]
         DeployHandled: DeployHandled,
         #[event]
-        LimitWithdrawalOn: LimitWithdrawalOn,
+        WithdrawalLimitEnabled: WithdrawalLimitEnabled,
         #[event]
-        LimitWithdrawalOff: LimitWithdrawalOff,
+        WithdrawalLimitDisabled: WithdrawalLimitDisabled,
         // --- Replaceability ---
         #[event]
         ImplementationAdded: ImplementationAdded,
@@ -161,6 +186,14 @@ mod TokenBridge {
         UpgradeGovernorAdded: UpgradeGovernorAdded,
         #[event]
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
+        #[event]
+        SecurityAdminAdded: SecurityAdminAdded,
+        #[event]
+        SecurityAdminRemoved: SecurityAdminRemoved,
+        #[event]
+        SecurityAgentAdded: SecurityAgentAdded,
+        #[event]
+        SecurityAgentRemoved: SecurityAgentRemoved,
     }
 
     // An event that is emitted when set_l1_bridge is called.
@@ -178,28 +211,62 @@ mod TokenBridge {
         erc20_class_hash: ClassHash,
     }
 
-    // An event that is emitted when initiate_withdraw is called.
+    // Emitted when setting/replacing the governance of the deplopyed l2_tokens.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct WithdrawInitiated {
+    struct L2TokenGovernanceChanged {
+        previous_governance: ContractAddress,
+        new_governance: ContractAddress,
+    }
+
+
+    // Legacy event, for backward competability. Emitted only for upgraded bridge when
+    // `initiate_withdraw` is called.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct withdraw_initiated {
         l1_recipient: EthAddress,
-        token: EthAddress,
         amount: u256,
         caller_address: ContractAddress,
     }
 
-    // An event that is emitted when handle_deposit is called.
+    // Emitted when either `initiate_withdraw` or `initiate_token_withdraw` is called.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct WithdrawInitiated {
+        #[key]
+        l1_token: EthAddress,
+        #[key]
+        l1_recipient: EthAddress,
+        amount: u256,
+        #[key]
+        caller_address: ContractAddress,
+    }
+
+    // Legacy event, for backward competability. Emitted only for upgraded bridge when
+    // `handle_deposit` is called.
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
+    struct deposit_handled {
+        account: ContractAddress,
+        amount: u256
+    }
+
+    // Emitted when either `handle_deposit` or `handle_token_deposit` is called.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DepositHandled {
+        #[key]
+        l1_token: EthAddress,
+        #[key]
         l2_recipient: ContractAddress,
-        token: EthAddress,
         amount: u256
     }
 
     // An event that is emitted when handle_deposit_with_message is called.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DepositWithMessageHandled {
+        #[key]
+        depositor: EthAddress,
+        #[key]
+        l1_token: EthAddress,
+        #[key]
         l2_recipient: ContractAddress,
-        token: EthAddress,
         amount: u256,
         message: Span<felt252>,
     }
@@ -207,7 +274,7 @@ mod TokenBridge {
     // Emitted upon processing of the handle_deploy L1 handler.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DeployHandled {
-        l1_token_address: EthAddress,
+        l1_token: EthAddress,
         name: felt252,
         symbol: felt252,
         decimals: u8,
@@ -215,148 +282,100 @@ mod TokenBridge {
 
     // Emitted upon starting of limiting withdrawals on a token.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct LimitWithdrawalOn {
-        l1_token_address: EthAddress,
+    struct WithdrawalLimitEnabled {
+        #[key]
+        sender: ContractAddress,
+        #[key]
+        l1_token: EthAddress,
     }
 
     // Emitted upon stopping of limiting withdrawals on a token.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct LimitWithdrawalOff {
-        l1_token_address: EthAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationAdded {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationRemoved {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationReplaced {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationFinalized {
-        impl_hash: ClassHash,
-    }
-
-    // An event that is emitted when `account` is granted `role`.
-    // `sender` is the account that originated the contract call, an admin role
-    // bearer (except if `_grant_role` is called during initialization from the constructor).
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleGranted {
-        role: RoleId,
-        account: ContractAddress,
+    struct WithdrawalLimitDisabled {
+        #[key]
         sender: ContractAddress,
-    }
-
-    // An event that is emitted when `account` is revoked `role`.
-    // `sender` is the account that originated the contract call:
-    //   - If using `revoke_role`, it is the admin role bearer.
-    //   - If using `renounce_role`, it is the role bearer (i.e. `account`).
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleRevoked {
-        role: RoleId,
-        account: ContractAddress,
-        sender: ContractAddress,
-    }
-
-    // An event that is emitted when `new_admin_role` is set as `role`'s admin role, replacing
-    // `previous_admin_role`.
-    // `DEFAULT_ADMIN_ROLE`(0) is the starting admin for all roles, despite {RoleAdminChanged} not
-    // being emitted signaling this.
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleAdminChanged {
-        role: RoleId,
-        previous_admin_role: RoleId,
-        new_admin_role: RoleId,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct AppGovernorAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct AppGovernorRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct AppRoleAdminAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct AppRoleAdminRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct GovernanceAdminAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct GovernanceAdminRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct OperatorAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct OperatorRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct TokenAdminAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct TokenAdminRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct UpgradeGovernorAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct UpgradeGovernorRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
+        #[key]
+        l1_token: EthAddress,
     }
 
     #[constructor]
     fn constructor(ref self: ContractState, upgrade_delay: u64) {
         self._initialize_roles();
         self.upgrade_delay.write(upgrade_delay);
+        self
+            .write_daily_withdrawal_limit_pct(
+                daily_withdrawal_limit_pct: DEFAULT_DAILY_WITHDRAW_LIMIT_PCT
+            );
     }
 
-    // TODO - move the limit withdrawal parts to its own impl.
     #[generate_trait]
-    impl InternalFunctions of IInternalFunctions {
+    impl WithdrawalLimitInternal of _WithdrawalLimitInternal {
+        fn is_withdrawal_limit_applied(self: @ContractState, l2_token: ContractAddress) -> bool {
+            self.withdrawal_limit_applied.read(l2_token)
+        }
+
+        // Sets the remaining withdrawal quota for today.
+        fn set_remaining_withdrawal_quota(
+            ref self: ContractState, l2_token: ContractAddress, amount: u256
+        ) {
+            let now = get_block_timestamp();
+            let day = now / SECONDS_IN_DAY;
+            self
+                .remaining_intraday_withdraw_quota
+                .write((l2_token, day), amount + REMAINING_QUOTA_OFFSET);
+        }
+
+        // Returns the remaining withdrawal quota for today.
+        fn read_withdrawal_quota_slot(self: @ContractState, l2_token: ContractAddress) -> u256 {
+            let now = get_block_timestamp();
+            let day = now / SECONDS_IN_DAY;
+            self.remaining_intraday_withdraw_quota.read((l2_token, day))
+        }
+
+
+        // Try to withdraw an amount and if it succeeds, update the remaining withdrawal quota.
+        fn consume_withdrawal_quota(
+            ref self: ContractState, l1_token: EthAddress, amount_to_withdraw: u256
+        ) {
+            let remaining_withdrawal_quota = self.get_remaining_withdrawal_quota(:l1_token);
+            // This function should be called only after checking that is_withdrawal_limit_applied
+            // is false.
+            assert(
+                remaining_withdrawal_quota < BoundedInt::max(), 'withdrawal_limit_applied ERROR'
+            );
+            assert(remaining_withdrawal_quota >= amount_to_withdraw, 'LIMIT_EXCEEDED');
+            let l2_token = self.get_l2_token(:l1_token);
+            self
+                .set_remaining_withdrawal_quota(
+                    :l2_token, amount: remaining_withdrawal_quota - amount_to_withdraw
+                )
+        }
+
+        // Returns the full quota of the daily withdrawal limit for a given token.
+        // The calculation is based on the limit percentage and current token total supply.
+        // Note - while techincally, we're exposed to overflow error here, we consider that
+        // risk non-existant for any token of even the smallest value.
+        fn get_daily_withdrawal_limit(self: @ContractState, l2_token: ContractAddress) -> u256 {
+            let total_supply = IERC20Dispatcher { contract_address: l2_token }.total_supply();
+            let daily_withdrawal_limit_pct: u256 = self.get_daily_withdrawal_limit_pct().into();
+            total_supply * daily_withdrawal_limit_pct / 100
+        }
+
+        fn get_daily_withdrawal_limit_pct(self: @ContractState) -> u8 {
+            self.daily_withdrawal_limit_pct.read()
+        }
+
+
+        fn write_daily_withdrawal_limit_pct(
+            ref self: ContractState, daily_withdrawal_limit_pct: u8
+        ) {
+            assert(daily_withdrawal_limit_pct <= 100, 'LIMIT_PCT_TOO_HIGH');
+            self.daily_withdrawal_limit_pct.write(daily_withdrawal_limit_pct);
+        }
+    }
+
+    #[generate_trait]
+    impl TokenBridgeInternal of _TokenBridgeInternal {
         // --- Token Bridge ---
         // Read l1_bridge and verify it's initialized.
         fn get_l1_bridge_address(self: @ContractState) -> EthAddress {
@@ -365,7 +384,7 @@ mod TokenBridge {
             l1_bridge_address
         }
 
-        fn validate_address_from_bridge(self: @ContractState, from_address: felt252) {
+        fn only_from_l1_bridge(self: @ContractState, from_address: felt252) {
             let l1_bridge_address = self.get_l1_bridge_address();
             assert(from_address == l1_bridge_address.into(), 'EXPECTED_FROM_BRIDGE_ONLY');
         }
@@ -373,229 +392,81 @@ mod TokenBridge {
         fn handle_deposit_common(
             self: @ContractState,
             l2_recipient: ContractAddress,
-            l2_token_address: ContractAddress,
+            l2_token: ContractAddress,
             amount: u256,
         ) {
-            assert(l2_token_address.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
+            assert(l2_token.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
 
             // Call mint on l2_token contract.
-            IMintableTokenDispatcher { contract_address: l2_token_address }
+            IMintableTokenDispatcher { contract_address: l2_token }
                 .permissioned_mint(account: l2_recipient, :amount);
-        }
-
-
-        fn is_withdrawal_limit_applied(
-            self: @ContractState, l2_token_address: ContractAddress
-        ) -> bool {
-            self.withdrawal_limit_applied.read(l2_token_address)
-        }
-
-        // Sets the remaining withdrawal quota for today.
-        fn set_remaining_withdrawal_quota(
-            ref self: ContractState, l2_token_address: ContractAddress, amount: u256
-        ) {
-            let now = get_block_timestamp();
-            let day = now / SECONDS_IN_DAY;
-            self
-                .remaining_intraday_withdraw_quota
-                .write((l2_token_address, day), amount + REMAINING_QUOTA_OFFSET);
-        }
-
-        // Returns the remaining withdrawal quota for today.
-        fn read_withdrawal_quota_slot(
-            self: @ContractState, l2_token_address: ContractAddress
-        ) -> u256 {
-            let now = get_block_timestamp();
-            let day = now / SECONDS_IN_DAY;
-            self.remaining_intraday_withdraw_quota.read((l2_token_address, day))
-        }
-
-
-        // Try to withdraw an amount and if it succeeds, update the remaining withdrawal quota.
-        fn consume_withdrawal_quota(
-            ref self: ContractState, l2_token_address: ContractAddress, amount_to_withdraw: u256
-        ) {
-            let remaining_withdrawal_quota = self.get_remaining_withdrawal_quota(:l2_token_address);
-            // This function should be called only after checking that is_withdrawal_limit_applied
-            // is false.
-            assert(
-                remaining_withdrawal_quota < BoundedInt::max(), 'withdrawal_limit_applied ERROR'
-            );
-            assert(remaining_withdrawal_quota >= amount_to_withdraw, 'LIMIT_EXCEEDED');
-            self
-                .set_remaining_withdrawal_quota(
-                    :l2_token_address, amount: remaining_withdrawal_quota - amount_to_withdraw
-                )
-        }
-
-        // Returns the full quota of the daily withdrawal limit for a given token.
-        // The calculation is based on the limit percentage and current token total supply.
-        // Note - while techincally, we're exposed to overflow error here, we consider that
-        // risk non-existant for any token of even the smallest value.
-        fn get_daily_withdrawal_limit(l2_token_address: ContractAddress) -> u256 {
-            let total_supply = IERC20Dispatcher { contract_address: l2_token_address }
-                .total_supply();
-            total_supply * DAILY_WITHDRAW_LIMIT_PCT / 100
-        }
-
-
-        // --- Replaceability ---
-
-        // Returns if finalized.
-        fn is_finalized(self: @ContractState) -> bool {
-            self.finalized.read()
-        }
-
-
-        // Sets the implementation as finalized.
-        fn finalize(ref self: ContractState) {
-            self.finalized.write(true);
-        }
-
-
-        // Sets the implementation activation time.
-        fn set_impl_activation_time(
-            ref self: ContractState, implementation_data: ImplementationData, activation_time: u64
-        ) {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_activation_time.write(impl_key, activation_time);
-        }
-
-        // Returns the implementation activation time.
-        fn get_impl_expiration_time(
-            self: @ContractState, implementation_data: ImplementationData
-        ) -> u64 {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_expiration_time.read(impl_key)
-        }
-
-        // Sets the implementation expiration time.
-        fn set_impl_expiration_time(
-            ref self: ContractState, implementation_data: ImplementationData, expiration_time: u64
-        ) {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_expiration_time.write(impl_key, expiration_time);
-        }
-
-        // --- Access Control ---
-        fn assert_only_role(self: @ContractState, role: RoleId) {
-            let authorized: bool = self.has_role(:role, account: get_caller_address());
-            assert(authorized, 'Caller is missing role');
-        }
-
-        //
-        // WARNING
-        // This method is unprotected and should be used only from the contract's constructor or
-        // from grant_role.
-        //
-
-        fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
-            if !self.has_role(:role, :account) {
-                self.role_members.write((role, account), true);
-                self
-                    .emit(
-                        Event::RoleGranted(
-                            RoleGranted { role, account, sender: get_caller_address() }
-                        )
-                    );
-            }
-        }
-
-        //
-        // WARNING
-        // This method is unprotected and should be used only from revoke_role or from
-        // renounce_role.
-        //
-
-        fn _revoke_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
-            if self.has_role(:role, :account) {
-                self.role_members.write((role, account), false);
-                self
-                    .emit(
-                        Event::RoleRevoked(
-                            RoleRevoked { role, account, sender: get_caller_address() }
-                        )
-                    );
-            }
-        }
-
-
-        //
-        // WARNING
-        // This method is unprotected and should not be used outside of a contract's constructor.
-        //
-
-        fn _set_role_admin(ref self: ContractState, role: RoleId, admin_role: RoleId) {
-            let previous_admin_role = self.get_role_admin(:role);
-            self.role_admin.write(role, admin_role);
-            self
-                .emit(
-                    Event::RoleAdminChanged(
-                        RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role }
-                    )
-                );
-        }
-        // --- Roles ---
-        // TODO -  change the fn name to _grant_role when we can have modularity.
-        fn _grant_role_and_emit(
-            ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
-        ) {
-            if !self.has_role(:role, :account) {
-                assert(account.is_non_zero(), 'INVALID_ACCOUNT_ADDRESS');
-                self.grant_role(:role, :account);
-                self.emit(event);
-            }
-        }
-
-        // TODO -  change the fn name to _revoke_role when we can have modularity.
-        fn _revoke_role_and_emit(
-            ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
-        ) {
-            if self.has_role(:role, :account) {
-                self.revoke_role(:role, :account);
-                self.emit(event);
-            }
-        }
-        //
-        // WARNING
-        // The following internal method is unprotected and should not be used outside of a
-        // contract's constructor.
-        //
-        // TODO -  This function should be under initialize function under roles contract.
-
-        fn _initialize_roles(ref self: ContractState) {
-            let provisional_governance_admin = get_caller_address();
-            let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
-            assert(un_initialized, 'ROLES_ALREADY_INITIALIZED');
-            self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
-            self._set_role_admin(role: APP_GOVERNOR, admin_role: APP_ROLE_ADMIN);
-            self._set_role_admin(role: APP_ROLE_ADMIN, admin_role: GOVERNANCE_ADMIN);
-            self._set_role_admin(role: GOVERNANCE_ADMIN, admin_role: GOVERNANCE_ADMIN);
-            self._set_role_admin(role: OPERATOR, admin_role: APP_ROLE_ADMIN);
-            self._set_role_admin(role: TOKEN_ADMIN, admin_role: APP_ROLE_ADMIN);
-            self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
-        }
-
-        fn only_app_governor(self: @ContractState) {
-            assert(self.is_app_governor(get_caller_address()), 'ONLY_APP_GOVERNOR');
-        }
-        fn only_app_role_admin(self: @ContractState) {
-            assert(self.is_app_role_admin(get_caller_address()), 'ONLY_APP_ROLE_ADMIN');
-        }
-        fn only_governance_admin(self: @ContractState) {
-            assert(self.is_governance_admin(get_caller_address()), 'ONLY_GOVERNANCE_ADMIN');
-        }
-        fn only_operator(self: @ContractState) {
-            assert(self.is_operator(get_caller_address()), 'ONLY_OPERATOR');
-        }
-        fn only_token_admin(self: @ContractState) {
-            assert(self.is_token_admin(get_caller_address()), 'ONLY_TOKEN_ADMIN');
-        }
-        fn only_upgrade_governor(self: @ContractState) {
-            assert(self.is_upgrade_governor(get_caller_address()), 'ONLY_UPGRADE_GOVERNOR');
         }
     }
 
+    #[external(v0)]
+    impl TokenBridgeAdmin of ITokenBridgeAdmin<ContractState> {
+        fn get_erc20_class_hash(self: @ContractState) -> ClassHash {
+            self.erc20_class_hash.read()
+        }
+
+        fn get_l2_token_governance(self: @ContractState) -> ContractAddress {
+            self.l2_token_governance.read()
+        }
+        fn set_l1_bridge(ref self: ContractState, l1_bridge_address: EthAddress) {
+            // The call is restricted to the app governor.
+            self.only_app_governor();
+            assert(self.l1_bridge.read().is_zero(), 'L1_BRIDGE_ALREADY_INITIALIZED');
+            assert(l1_bridge_address.is_non_zero(), 'ZERO_L1_BRIDGE_ADDRESS');
+            self.l1_bridge.write(l1_bridge_address);
+            self.emit(L1BridgeSet { l1_bridge_address });
+        }
+
+        fn set_erc20_class_hash(ref self: ContractState, erc20_class_hash: ClassHash) {
+            // The call is restricted to the app governor.
+            self.only_app_governor();
+            let previous_hash = self.erc20_class_hash.read();
+            self.erc20_class_hash.write(erc20_class_hash);
+            self
+                .emit(
+                    Erc20ClassHashStored {
+                        erc20_class_hash: erc20_class_hash, previous_hash: previous_hash
+                    }
+                );
+        }
+
+        fn set_l2_token_governance(ref self: ContractState, l2_token_governance: ContractAddress) {
+            // The call is restricted to the app governor (l2_bridge app_governor).
+            self.only_app_governor();
+            let previous_governance = self.l2_token_governance.read();
+            self.l2_token_governance.write(l2_token_governance);
+            self
+                .emit(
+                    L2TokenGovernanceChanged {
+                        previous_governance, new_governance: l2_token_governance
+                    }
+                );
+        }
+
+        // Enable withdrawal limit for a token.
+        fn enable_withdrawal_limit(ref self: ContractState, l1_token: EthAddress) {
+            self.only_security_agent();
+            let l2_token = self.get_l2_token(:l1_token);
+            assert(l2_token.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
+            self.withdrawal_limit_applied.write(l2_token, true);
+            let sender = get_caller_address();
+            self.emit(WithdrawalLimitEnabled { sender: sender, l1_token: l1_token });
+        }
+
+        // Disable withdrawal limit for a token.
+        fn disable_withdrawal_limit(ref self: ContractState, l1_token: EthAddress) {
+            self.only_security_admin();
+            let l2_token = self.get_l2_token(:l1_token);
+            assert(l2_token.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
+            self.withdrawal_limit_applied.write(l2_token, false);
+            let sender = get_caller_address();
+            self.emit(WithdrawalLimitDisabled { sender: sender, l1_token: l1_token });
+        }
+    }
 
     #[external(v0)]
     impl TokenBridge of ITokenBridge<ContractState> {
@@ -607,122 +478,87 @@ mod TokenBridge {
             CONTRACT_IDENTITY
         }
 
-        fn get_erc20_class_hash(self: @ContractState) -> ClassHash {
-            self.erc20_class_hash.read()
+
+        fn get_l1_token(self: @ContractState, l2_token: ContractAddress) -> EthAddress {
+            self.l2_l1_token_map.read(l2_token)
+        }
+        fn get_l2_token(self: @ContractState, l1_token: EthAddress) -> ContractAddress {
+            self.l1_l2_token_map.read(l1_token)
         }
 
 
-        fn get_l1_token_address(
-            self: @ContractState, l2_token_address: ContractAddress
-        ) -> EthAddress {
-            self.l2_l1_token_map.read(l2_token_address)
-        }
-        fn get_l2_token_address(
-            self: @ContractState, l1_token_address: EthAddress
-        ) -> ContractAddress {
-            self.l1_l2_token_map.read(l1_token_address)
-        }
-
-        fn set_l1_bridge(ref self: ContractState, l1_bridge_address: EthAddress) {
-            // The call is restricted to the app governor.
-            self.only_app_governor();
-            assert(self.l1_bridge.read().is_zero(), 'L1_BRIDGE_ALREADY_INITIALIZED');
-            assert(l1_bridge_address.is_non_zero(), 'ZERO_L1_BRIDGE_ADDRESS');
-            self.l1_bridge.write(l1_bridge_address);
-            self.emit(Event::L1BridgeSet(L1BridgeSet { l1_bridge_address }));
-        }
-
-        fn set_erc20_class_hash(ref self: ContractState, erc20_class_hash: ClassHash) {
-            // The call is restricted to the app governor.
-            self.only_app_governor();
-            let previous_hash = self.erc20_class_hash.read();
-            self.erc20_class_hash.write(erc20_class_hash);
-            self
-                .emit(
-                    Event::Erc20ClassHashStored(
-                        Erc20ClassHashStored {
-                            erc20_class_hash: erc20_class_hash, previous_hash: previous_hash
-                        }
-                    )
-                );
-        }
-
-
-        // TODO - Add test for this function.
         // Returns the current remaining withdrawal quota for a given token. If there is no limit,
         // returns max uint256. If the limit was not set yet, we calculate it based on the total
         // supply. Otherwise, return the limit.
-        fn get_remaining_withdrawal_quota(
-            self: @ContractState, l2_token_address: ContractAddress
-        ) -> u256 {
+        fn get_remaining_withdrawal_quota(self: @ContractState, l1_token: EthAddress) -> u256 {
+            let l2_token = self.get_l2_token(:l1_token);
             // If there is no limit, return max uint256.
-            if self.is_withdrawal_limit_applied(l2_token_address) == false {
+            if self.is_withdrawal_limit_applied(:l2_token) == false {
                 return BoundedInt::max();
             }
-            let remaining_quota = self.read_withdrawal_quota_slot(:l2_token_address);
+            let remaining_quota = self.read_withdrawal_quota_slot(:l2_token);
             if remaining_quota == 0 {
-                return InternalFunctions::get_daily_withdrawal_limit(:l2_token_address);
+                return self.get_daily_withdrawal_limit(:l2_token);
             }
             remaining_quota - REMAINING_QUOTA_OFFSET
         }
 
-        fn apply_withdrawal_limit(ref self: ContractState, token: EthAddress, applied_state: bool) {
-            self.only_app_governor();
-            let l2_token_address = self.get_l2_token_address(l1_token_address: token);
-            assert(l2_token_address.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
-            let limit_applied = self.is_withdrawal_limit_applied(:l2_token_address);
-            if (limit_applied != applied_state) {
-                self.withdrawal_limit_applied.write(l2_token_address, applied_state);
-                if (applied_state) {
-                    self.emit(LimitWithdrawalOn { l1_token_address: token });
-                } else {
-                    self.emit(LimitWithdrawalOff { l1_token_address: token });
-                }
-            }
+        // Legacy format of initite_withdraw. Applicable only for upgraded legacy bridges.
+        // In such bridges, there is a single token that is stored in `l2_token()`.
+        fn initiate_withdraw(ref self: ContractState, l1_recipient: EthAddress, amount: u256) {
+            let l2_token = self.l2_token.read();
+            assert(l2_token.is_non_zero(), 'L2_TOKEN_NOT_SET');
+            let l1_token = self.get_l1_token(:l2_token);
+
+            assert(l2_token == self.get_l2_token(:l1_token), 'L1_L2_TOKEN_MISMATCH');
+
+            self.initiate_token_withdraw(:l1_token, :l1_recipient, :amount);
+
+            // Legacy withdraw_initiated is emitted (in addition to the event that is emitted in
+            // initiate_token_withdraw).
+            let caller_address = get_caller_address();
+            self.emit(withdraw_initiated { l1_recipient, amount, caller_address });
         }
 
-
         // Initiates an l2-to-l1 token withdraw.
-        fn initiate_withdraw(
-            ref self: ContractState, l1_recipient: EthAddress, token: EthAddress, amount: u256
+        fn initiate_token_withdraw(
+            ref self: ContractState, l1_token: EthAddress, l1_recipient: EthAddress, amount: u256
         ) {
+            // Prevent burn to zero.
+            assert(l1_recipient.is_non_zero(), 'INVALID_RECIPIENT');
+
             // Read addresses.
             let caller_address = get_caller_address();
-            let l2_token_address = self.get_l2_token_address(l1_token_address: token);
-            assert(l2_token_address.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
+            let l2_token = self.get_l2_token(:l1_token);
+            assert(l2_token.is_non_zero(), 'TOKEN_NOT_IN_BRIDGE');
             let l1_bridge_address = self.get_l1_bridge_address();
 
             // Validate amount.
             assert(amount != 0, 'ZERO_WITHDRAWAL');
-            let caller_balance = IERC20Dispatcher { contract_address: l2_token_address }
+            let caller_balance = IERC20Dispatcher { contract_address: l2_token }
                 .balance_of(account: caller_address);
             assert(amount <= caller_balance, 'INSUFFICIENT_FUNDS');
 
-            if (self.is_withdrawal_limit_applied(:l2_token_address)) {
-                self.consume_withdrawal_quota(:l2_token_address, amount_to_withdraw: amount);
+            if (self.is_withdrawal_limit_applied(:l2_token)) {
+                self.consume_withdrawal_quota(:l1_token, amount_to_withdraw: amount);
             }
 
             // Call burn on l2_token contract.
-            IMintableTokenDispatcher { contract_address: l2_token_address }
+            IMintableTokenDispatcher { contract_address: l2_token }
                 .permissioned_burn(account: caller_address, :amount);
 
             // Send the message.
             let mut message_payload = ArrayTrait::new();
             WITHDRAW_MESSAGE.serialize(ref message_payload);
             l1_recipient.serialize(ref message_payload);
-            token.serialize(ref message_payload);
+            l1_token.serialize(ref message_payload);
             amount.serialize(ref message_payload);
 
             let result = send_message_to_l1_syscall(
                 to_address: l1_bridge_address.into(), payload: message_payload.span()
             );
             assert(result.is_ok(), 'MESSAGE_SEND_FAIILED');
-            self
-                .emit(
-                    Event::WithdrawInitiated(
-                        WithdrawInitiated { l1_recipient, token, amount, caller_address }
-                    )
-                );
+            self.emit(WithdrawInitiated { l1_token, l1_recipient, amount, caller_address });
         }
     }
 
@@ -762,7 +598,7 @@ mod TokenBridge {
             // TODO -  add an assertion that the `implementation_data.impl_hash` is declared.
             self.set_impl_activation_time(:implementation_data, :activation_time);
             self.set_impl_expiration_time(:implementation_data, :expiration_time);
-            self.emit(Event::ImplementationAdded(ImplementationAdded { implementation_data }));
+            self.emit(ImplementationAdded { implementation_data });
         }
 
         // Removes an existing implementation.
@@ -776,10 +612,7 @@ mod TokenBridge {
             if (impl_activation_time.is_non_zero()) {
                 self.set_impl_activation_time(:implementation_data, activation_time: 0);
                 self.set_impl_expiration_time(:implementation_data, expiration_time: 0);
-                self
-                    .emit(
-                        Event::ImplementationRemoved(ImplementationRemoved { implementation_data })
-                    );
+                self.emit(ImplementationRemoved { implementation_data });
             }
         }
 
@@ -803,20 +636,12 @@ mod TokenBridge {
             assert(impl_activation_time <= now, 'NOT_ENABLED_YET');
             assert(now <= impl_expiration_time, 'IMPLEMENTATION_EXPIRED');
             // We emit now so that finalize emits last (if it does).
-            self
-                .emit(
-                    Event::ImplementationReplaced(ImplementationReplaced { implementation_data })
-                );
+            self.emit(ImplementationReplaced { implementation_data });
 
             // Finalize imeplementation, if needed.
             if (implementation_data.final) {
                 self.finalize();
-                self
-                    .emit(
-                        Event::ImplementationFinalized(
-                            ImplementationFinalized { impl_hash: implementation_data.impl_hash }
-                        )
-                    );
+                self.emit(ImplementationFinalized { impl_hash: implementation_data.impl_hash });
             }
 
             // Handle EIC.
@@ -848,6 +673,45 @@ mod TokenBridge {
         }
     }
 
+    #[generate_trait]
+    impl ReplaceableInternal of _ReplaceableInternal {
+        // Returns if finalized.
+        fn is_finalized(self: @ContractState) -> bool {
+            self.finalized.read()
+        }
+
+
+        // Sets the implementation as finalized.
+        fn finalize(ref self: ContractState) {
+            self.finalized.write(true);
+        }
+
+
+        // Sets the implementation activation time.
+        fn set_impl_activation_time(
+            ref self: ContractState, implementation_data: ImplementationData, activation_time: u64
+        ) {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_activation_time.write(impl_key, activation_time);
+        }
+
+        // Returns the implementation activation time.
+        fn get_impl_expiration_time(
+            self: @ContractState, implementation_data: ImplementationData
+        ) -> u64 {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_expiration_time.read(impl_key)
+        }
+
+        // Sets the implementation expiration time.
+        fn set_impl_expiration_time(
+            ref self: ContractState, implementation_data: ImplementationData, expiration_time: u64
+        ) {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_expiration_time.write(impl_key, expiration_time);
+        }
+    }
+
     #[external(v0)]
     impl AccessControlImplExternal of IAccessControl<ContractState> {
         fn has_role(self: @ContractState, role: RoleId, account: ContractAddress) -> bool {
@@ -860,7 +724,7 @@ mod TokenBridge {
     }
 
     #[generate_trait]
-    impl AccessControlImplInternal of IAccessControlInternal {
+    impl AccessControlImplInternal of _AccessControlImplInternal {
         fn grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             let admin = self.get_role_admin(:role);
             self.assert_only_role(role: admin);
@@ -876,6 +740,49 @@ mod TokenBridge {
         fn renounce_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             assert(get_caller_address() == account, 'Can only renounce role for self');
             self._revoke_role(:role, :account);
+        }
+    }
+
+    #[generate_trait]
+    impl InternalAccessControl of _InternalAccessControl {
+        fn assert_only_role(self: @ContractState, role: RoleId) {
+            let authorized: bool = self.has_role(:role, account: get_caller_address());
+            assert(authorized, CALLER_MISSING_ROLE);
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should be used only from the contract's constructor or
+        // from grant_role.
+        //
+        fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
+            if !self.has_role(:role, :account) {
+                self.role_members.write((role, account), true);
+                self.emit(RoleGranted { role, account, sender: get_caller_address() });
+            }
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should be used only from revoke_role or from
+        // renounce_role.
+        //
+        fn _revoke_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
+            if self.has_role(:role, :account) {
+                self.role_members.write((role, account), false);
+                self.emit(RoleRevoked { role, account, sender: get_caller_address() });
+            }
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should not be used outside of a contract's constructor.
+        //
+
+        fn _set_role_admin(ref self: ContractState, role: RoleId, admin_role: RoleId) {
+            let previous_admin_role = self.get_role_admin(:role);
+            self.role_admin.write(role, admin_role);
+            self.emit(RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role });
         }
     }
 
@@ -906,6 +813,14 @@ mod TokenBridge {
             self.has_role(role: UPGRADE_GOVERNOR, :account)
         }
 
+        fn is_security_admin(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: SECURITY_ADMIN, :account)
+        }
+
+        fn is_security_agent(self: @ContractState, account: ContractAddress) -> bool {
+            self.has_role(role: SECURITY_AGENT, :account)
+        }
+
         fn register_app_governor(ref self: ContractState, account: ContractAddress) {
             let event = Event::AppGovernorAdded(
                 AppGovernorAdded { added_account: account, added_by: get_caller_address() }
@@ -926,6 +841,35 @@ mod TokenBridge {
             );
             self._grant_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
         }
+
+        fn register_security_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::SecurityAdminAdded(
+                SecurityAdminAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: SECURITY_ADMIN, :account, :event);
+        }
+
+        fn register_security_agent(ref self: ContractState, account: ContractAddress) {
+            let event = Event::SecurityAgentAdded(
+                SecurityAgentAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: SECURITY_AGENT, :account, :event);
+        }
+
+        fn remove_security_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::SecurityAdminRemoved(
+                SecurityAdminRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: SECURITY_ADMIN, :account, :event);
+        }
+
+        fn remove_security_agent(ref self: ContractState, account: ContractAddress) {
+            let event = Event::SecurityAgentRemoved(
+                SecurityAgentRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: SECURITY_AGENT, :account, :event);
+        }
+
 
         fn remove_app_role_admin(ref self: ContractState, account: ContractAddress) {
             let event = Event::AppRoleAdminRemoved(
@@ -1005,43 +949,133 @@ mod TokenBridge {
         }
     }
 
-    // Handles an l1-to-l2 token deposit.
+
+    #[generate_trait]
+    impl RolesInternal of _RolesInternal {
+        // TODO -  change the fn name to _grant_role when we can have modularity.
+        fn _grant_role_and_emit(
+            ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
+        ) {
+            if !self.has_role(:role, :account) {
+                assert(account.is_non_zero(), ZERO_ADDRESS);
+                self.grant_role(:role, :account);
+                self.emit(event);
+            }
+        }
+
+        // TODO -  change the fn name to _revoke_role when we can have modularity.
+        fn _revoke_role_and_emit(
+            ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
+        ) {
+            if self.has_role(:role, :account) {
+                self.revoke_role(:role, :account);
+                self.emit(event);
+            }
+        }
+        //
+        // WARNING
+        // The following internal method is unprotected and should not be used outside of a
+        // contract's constructor.
+        //
+        // TODO -  This function should be under initialize function under roles contract.
+
+        fn _initialize_roles(ref self: ContractState) {
+            let provisional_governance_admin = get_caller_address();
+            let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
+            assert(un_initialized, 'ROLES_ALREADY_INITIALIZED');
+            self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
+            self._set_role_admin(role: APP_GOVERNOR, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: APP_ROLE_ADMIN, admin_role: GOVERNANCE_ADMIN);
+            self._set_role_admin(role: GOVERNANCE_ADMIN, admin_role: GOVERNANCE_ADMIN);
+            self._set_role_admin(role: OPERATOR, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: TOKEN_ADMIN, admin_role: APP_ROLE_ADMIN);
+            self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
+
+            self._grant_role(role: SECURITY_ADMIN, account: provisional_governance_admin);
+            self._set_role_admin(role: SECURITY_ADMIN, admin_role: SECURITY_ADMIN);
+            self._set_role_admin(role: SECURITY_AGENT, admin_role: SECURITY_ADMIN);
+        }
+
+        fn only_app_governor(self: @ContractState) {
+            assert(self.is_app_governor(get_caller_address()), 'ONLY_APP_GOVERNOR');
+        }
+        fn only_operator(self: @ContractState) {
+            assert(self.is_operator(get_caller_address()), 'ONLY_OPERATOR');
+        }
+        fn only_token_admin(self: @ContractState) {
+            assert(self.is_token_admin(get_caller_address()), 'ONLY_TOKEN_ADMIN');
+        }
+        fn only_upgrade_governor(self: @ContractState) {
+            assert(self.is_upgrade_governor(get_caller_address()), 'ONLY_UPGRADE_GOVERNOR');
+        }
+
+        fn only_security_admin(self: @ContractState) {
+            assert(self.is_security_admin(get_caller_address()), 'ONLY_SECURITY_ADMIN');
+        }
+
+        fn only_security_agent(self: @ContractState) {
+            assert(self.is_security_agent(get_caller_address()), 'ONLY_SECURITY_AGENT');
+        }
+    }
+
+
+    // Legacy format of handle_deposit. Applicable only for legacy bridges.
+    // In such bridges, there is a single token that is stored in `l2_token()`.
     #[l1_handler]
     fn handle_deposit(
+        ref self: ContractState, from_address: felt252, l2_recipient: ContractAddress, amount: u256,
+    ) {
+        let l2_token = self.l2_token.read();
+        assert(l2_token.is_non_zero(), 'TOKEN_CONFIG_MISMATCH');
+        let l1_token = self.get_l1_token(:l2_token);
+
+        assert(l2_token == self.get_l2_token(:l1_token), 'L1_L2_TOKEN_MISMATCH');
+
+        // Verify deposit originating from the l1 bridge.
+        self.only_from_l1_bridge(:from_address);
+
+        self.handle_deposit_common(:l2_recipient, :l2_token, :amount);
+        self.emit(DepositHandled { l1_token, l2_recipient, amount });
+        self.emit(deposit_handled { account: l2_recipient, amount });
+    }
+
+    // Handles an l1-to-l2 token deposit.
+    #[l1_handler]
+    fn handle_token_deposit(
         ref self: ContractState,
         from_address: felt252,
+        l1_token: EthAddress,
         l2_recipient: ContractAddress,
-        token: EthAddress,
         amount: u256,
     ) {
         // Verify deposit originating from the l1 bridge.
-        self.validate_address_from_bridge(:from_address);
+        self.only_from_l1_bridge(:from_address);
 
-        let l2_token_address = self.get_l2_token_address(l1_token_address: token);
-        self.handle_deposit_common(:l2_recipient, :l2_token_address, :amount);
-        self.emit(Event::DepositHandled(DepositHandled { l2_recipient, token, amount }));
+        let l2_token = self.get_l2_token(:l1_token);
+        self.handle_deposit_common(:l2_recipient, :l2_token, :amount);
+        self.emit(DepositHandled { l1_token, l2_recipient, amount });
     }
 
     #[l1_handler]
     fn handle_deposit_with_message(
         ref self: ContractState,
         from_address: felt252,
+        l1_token: EthAddress,
         l2_recipient: ContractAddress,
-        token: EthAddress,
         amount: u256,
         depositor: EthAddress,
         message: Span<felt252>,
     ) {
         // Verify deposit originating from the l1 bridge.
-        self.validate_address_from_bridge(:from_address);
+        self.only_from_l1_bridge(:from_address);
 
-        let l2_token_address = self.get_l2_token_address(l1_token_address: token);
-        self.handle_deposit_common(:l2_recipient, :l2_token_address, :amount);
+        let l2_token = self.get_l2_token(:l1_token);
+        self.handle_deposit_common(:l2_recipient, :l2_token, :amount);
 
-        // Create the calldata that will be sent to on_receive. l2_token_address, amount and
+        // Create the calldata that will be sent to on_receive. l2_token, amount and
         // depositor are the fields from the deposit context.
         let mut calldata = ArrayTrait::new();
-        l2_token_address.serialize(ref calldata);
+        l2_token.serialize(ref calldata);
         amount.serialize(ref calldata);
         depositor.serialize(ref calldata);
         message.serialize(ref calldata);
@@ -1058,26 +1092,30 @@ mod TokenBridge {
             .unwrap();
         assert(on_receive_success, 'DEPOSIT_REJECTED');
 
-        self
-            .emit(
-                Event::DepositWithMessageHandled(
-                    DepositWithMessageHandled { l2_recipient, token, amount, message }
-                )
-            );
+        self.emit(DepositWithMessageHandled { depositor, l1_token, l2_recipient, amount, message });
     }
 
     #[l1_handler]
     fn handle_token_enrollment(
         ref self: ContractState,
         from_address: felt252,
-        l1_token_address: EthAddress,
+        l1_token: EthAddress,
         name: felt252,
         symbol: felt252,
         decimals: u8
     ) {
+        // Upgraded legacy bridge is not allowed to enroll tokens.
+        let l2_token = self.l2_token.read();
+        // l2_token != 0 implies the bridge is an upgraded legacy bridge.
+        assert(l2_token.is_zero(), 'ENROLL_TOKEN_DISALLOWED');
+
         // Verify deploy originating from the l1 bridge.
-        self.validate_address_from_bridge(:from_address);
-        assert(self.l1_l2_token_map.read(l1_token_address).is_zero(), 'TOKEN_ALREADY_EXISTS');
+        self.only_from_l1_bridge(:from_address);
+        assert(self.l1_l2_token_map.read(l1_token).is_zero(), 'TOKEN_ALREADY_EXISTS');
+        let l2_token_governance = self.get_l2_token_governance();
+        assert(l2_token_governance.is_non_zero(), 'L2_TOKEN_GOV_NOT_SET');
+        let class_hash = self.get_erc20_class_hash();
+        assert(class_hash.is_non_zero(), 'L2_TOKEN_CLASS_HASH_NOT_SET');
 
         let initial_supply = 0_u256;
         let permitted_minter = get_contract_address();
@@ -1089,26 +1127,20 @@ mod TokenBridge {
         initial_supply.serialize(ref calldata);
         initial_recipient.serialize(ref calldata);
         permitted_minter.serialize(ref calldata);
-
-        let class_hash = self.get_erc20_class_hash();
+        l2_token_governance.serialize(ref calldata);
+        DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
 
         // Deploy the contract.
-        let (l2_token_address, _) = deploy_syscall(class_hash, 0, calldata.span(), false)
+        // Using `l1_token` as salt to enforce uniqueness.
+        let (l2_token, _) = deploy_syscall(class_hash, l1_token.into(), calldata.span(), false)
             .unwrap_syscall();
 
-        self.l1_l2_token_map.write(l1_token_address, l2_token_address);
-        self.l2_l1_token_map.write(l2_token_address, l1_token_address);
+        self.l1_l2_token_map.write(l1_token, l2_token);
+        self.l2_l1_token_map.write(l2_token, l1_token);
 
         self
             .emit(
-                Event::DeployHandled(
-                    DeployHandled {
-                        l1_token_address: l1_token_address,
-                        name: name,
-                        symbol: symbol,
-                        decimals: decimals
-                    }
-                )
+                DeployHandled { l1_token: l1_token, name: name, symbol: symbol, decimals: decimals }
             );
     }
 }

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts for Cairo v0.7.0 (utils/math.cairo)
+// OpenZeppelin Contracts for Cairo v0.8.0-beta.1 (utils/math.cairo)
 
 use traits::Into;
 
-/// Returns the average of two numbers. The result is rounded towards
-/// zero.
+/// Returns the average of two numbers. The result is rounded down.
 fn average<
     T,
     impl TDrop: Drop<T>,

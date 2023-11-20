@@ -4,7 +4,7 @@ from typing import Iterator, List, Optional, Type
 
 import pytest
 import pytest_asyncio
-from solidity.utils import load_contract, str_to_felt
+from solidity.utils import load_contract, load_legacy_contract, str_to_felt
 from starkware.starknet.business_logic.state.state_api_objects import BlockInfo
 
 from starkware.eth.eth_test_utils import (
@@ -17,7 +17,15 @@ from starkware.eth.eth_test_utils import (
 from starkware.starknet.testing.starknet import Starknet
 from starkware.starknet.testing.contracts import MockStarknetMessaging
 from solidity.contracts import StarknetTokenBridge, starkgate_registry, starkgate_manager
-from solidity.test_contracts import StarknetEthBridgeTester, StarknetTokenBridgeTester
+from solidity.test_contracts import (
+    StarknetEthBridgeTester,
+    StarknetTokenBridgeTester,
+    StarknetERC20BridgeTester,
+    SelfRemoveTester,
+)
+
+DYNAMIC_FEE = -1
+DEFAULT_DEPOSIT_FEE = 100_000 * 10**9  # 100_000 gwei.
 
 # TokenStatus
 UNKNOWN = 0
@@ -25,8 +33,8 @@ PENDING = 1
 ACTIVE = 2
 DEACTIVATED = 3
 
-HANDLE_DEPOSIT_SELECTOR = (
-    1285101517810983806491589552491143496277809242732141897358598292095611420389
+HANDLE_TOKEN_DEPOSIT_SELECTOR = (
+    774397379524139446221206168840917193112228400237242521560346153613428128537
 )
 HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR = (
     247015267890530308727663503380700973440961674638638362173641612402089762826
@@ -39,10 +47,15 @@ HANDLE_TOKEN_ENROLLMENT_SELECTOR = (
 
 UPGRADE_DELAY = 0
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+BLOCKED_TOKEN = "0x0000000000000000000000000000000000000001"
+L1_TOKEN_ADDRESS_OF_ETH = "0x0000000000000000000000000000000000455448"
+TOKEN_ADDRESS = "0x0000000000000000000000000000000000123456"
+BRIDGE_ADDRESS = "0x0000000000000000000000000000000000001337"
 MESSAGE_CANCEL_DELAY = 1000
 INITIAL_BALANCE = 10**20
 L2_TOKEN_CONTRACT = 42
 MAX_UINT = 2**256 - 1
+DAY_IN_SECONDS = 24 * 60 * 60
 
 
 @pytest.fixture(scope="session")
@@ -54,6 +67,13 @@ def event_loop():
 
 TestERC20 = load_contract("TestERC20")
 Proxy = load_contract("Proxy")
+LegacyProxy = load_legacy_contract("Proxy")
+LegacyEthBridge = load_legacy_contract("StarknetEthBridge")
+LegacyERC20Bridge = load_legacy_contract("StarknetERC20Bridge")
+UpgradeAssistEIC = load_contract("StarkgateUpgradeAssistExternalInitializer")
+StarknetEthBridge = load_contract("StarknetEthBridge")
+StarknetERC20Bridge = load_contract("StarknetERC20Bridge")
+StarknetTokenBridge = load_contract("StarknetTokenBridge")
 
 
 def advance_time(starknet: Starknet, block_time_diff: int, block_num_diff: int = 1):
@@ -88,6 +108,19 @@ def deploy_proxy(governor: EthAccount) -> EthContract:
     proxy = governor.deploy(Proxy, UPGRADE_DELAY)
     proxy.registerUpgradeGovernor(governor.address)
     return proxy
+
+
+def deploy_legacy_proxy(governor: EthAccount) -> EthContract:
+    legacyProxy = governor.deploy(LegacyProxy, UPGRADE_DELAY)
+    return legacyProxy
+
+
+def deploy_legacy_eth_bridge(governor: EthAccount) -> EthContract:
+    return governor.deploy(LegacyEthBridge)
+
+
+def deploy_legacy_erc20_bridge(governor: EthAccount) -> EthContract:
+    return governor.deploy(LegacyERC20Bridge)
 
 
 def add_implementation_and_upgrade(proxy, new_impl, init_data, governor, is_finalizing=False):
@@ -153,6 +186,11 @@ def governor(eth_test_utils: EthTestUtils) -> EthAccount:
     return eth_test_utils.accounts[0]
 
 
+@pytest.fixture(scope="session")
+def regular_user(eth_test_utils: EthTestUtils) -> EthContract:
+    return eth_test_utils.accounts[3]
+
+
 @pytest.fixture
 def mock_erc20_contract(governor: EthAccount) -> EthContract:
     erc20_contract = governor.deploy(TestERC20)
@@ -185,6 +223,26 @@ def manager_proxy(governor: EthAccount, registry_proxy: EthContract) -> EthContr
 def bridge_proxy(governor: EthAccount, manager_proxy: EthContract) -> EthContract:
     assert manager_proxy  # Order enforcement.
     return deploy_proxy(governor=governor)
+
+
+@pytest.fixture
+def self_remove_tester_proxy(governor: EthAccount) -> EthContract:
+    return deploy_proxy(governor=governor)
+
+
+@pytest.fixture
+def self_remove_tester_contract(
+    governor: EthAccount, self_remove_tester_proxy: EthContract
+) -> EthContract:
+    self_remove_tester_impl = governor.deploy(SelfRemoveTester)
+    init_data = chain_hexes_to_bytes([ZERO_ADDRESS])
+    add_implementation_and_upgrade(
+        proxy=self_remove_tester_proxy,
+        new_impl=self_remove_tester_impl.address,
+        init_data=init_data,
+        governor=governor,
+    )
+    return self_remove_tester_proxy.replace_abi(abi=self_remove_tester_impl.abi)
 
 
 @pytest.fixture
@@ -242,6 +300,8 @@ def bridge_contract(
         governor=governor,
     )
     bridge = bridge_proxy.replace_abi(abi=starkgate_bridge_impl.abi)
+    bridge.registerAppRoleAdmin(governor, transact_args={"from": governor})
+    bridge.registerAppGovernor(governor, transact_args={"from": governor})
     bridge.setL2TokenBridge(L2_TOKEN_CONTRACT, transact_args={"from": governor})
     return bridge
 
@@ -286,7 +346,11 @@ class TokenBridgeWrapper(ABC):
         self.non_default_user = eth_test_utils.accounts[1]
         self.contract = self.default_user.deploy(compiled_bridge_contract)
         proxy = self.default_user.deploy(Proxy, UPGRADE_DELAY)
+        proxy.registerAppRoleAdmin(self.default_user.address)
+        proxy.registerAppGovernor(self.default_user.address)
         proxy.registerUpgradeGovernor(self.default_user.address)
+        proxy.registerSecurityAdmin(self.default_user.address)
+        proxy.registerSecurityAgent(self.default_user.address)
 
         add_implementation_and_upgrade(
             proxy=proxy,
@@ -312,6 +376,17 @@ class TokenBridgeWrapper(ABC):
     @abstractmethod
     def token_address(self) -> str:
         pass
+
+    def enable_withdrawal_limit(self, user: EthAccount = None):
+        user = user or self.default_user
+        self.contract.enableWithdrawalLimit(self.token_address(), transact_args={"from": user})
+
+    def disable_withdrawal_limit(self, user: EthAccount = None):
+        user = user or self.default_user
+        self.contract.disableWithdrawalLimit(self.token_address(), transact_args={"from": user})
+
+    def get_remaining_intraday_allowance(self) -> int:
+        return self.contract.getRemainingIntradayAllowance.call(self.token_address())
 
     def withdraw(self, amount: int, user: Optional[EthAccount] = None) -> EthReceipt:
         """
@@ -403,7 +478,7 @@ class TokenBridgeWrapper(ABC):
         """
 
 
-class ERC20BridgeWrapper(TokenBridgeWrapper):
+class StarknetTokenBridgeWrapper(TokenBridgeWrapper):
     TRANSACTION_COSTS_BOUND: int = 0
 
     def __init__(
@@ -447,6 +522,91 @@ class ERC20BridgeWrapper(TokenBridgeWrapper):
         self.mock_erc20_contract.approve.transact(
             self.contract.address, amount, transact_args={"from": user}
         )
+        if fee == DYNAMIC_FEE:
+            fee = self.contract.estimateDepositFeeWei.call()
+        if message is None:
+            return self.contract.deposit(
+                self.token_address(),
+                amount,
+                l2_recipient,
+                transact_args={"from": user, "value": fee},
+            )
+        else:
+            return self.contract.depositWithMessage(
+                self.token_address(),
+                amount,
+                l2_recipient,
+                message,
+                transact_args={"from": user, "value": fee},
+            )
+
+    def get_account_balance(self, account: EthAccount) -> int:
+        return self.mock_erc20_contract.balanceOf.call(account.address)
+
+    def get_bridge_balance(self) -> int:
+        return self.mock_erc20_contract.balanceOf.call(self.contract.address)
+
+    def set_account_balance(self, account: EthAccount, amount: int):
+        self.mock_erc20_contract.setBalance.transact(account.address, amount)
+
+    def set_bridge_balance(self, amount: int):
+        self.mock_erc20_contract.setBalance.transact(self.contract.address, amount)
+
+    def get_tx_cost(self, tx_receipt: EthReceipt) -> int:
+        return 0
+
+    def reset_balances(self):
+        self.set_bridge_balance(amount=0)
+        for account in (self.default_user, self.non_default_user):
+            self.set_account_balance(account=account, amount=0)
+
+
+class StarknetERC20BridgeWrapper(TokenBridgeWrapper):
+    TRANSACTION_COSTS_BOUND: int = 0
+
+    def __init__(
+        self,
+        messaging_contract: EthContract,
+        registry_contract: EthContract,
+        eth_test_utils: EthTestUtils,
+    ):
+        self.mock_erc20_contract = eth_test_utils.accounts[0].deploy(TestERC20)
+
+        super().__init__(
+            compiled_bridge_contract=StarknetERC20BridgeTester,
+            eth_test_utils=eth_test_utils,
+            init_data=chain_hexes_to_bytes(
+                [
+                    ZERO_ADDRESS,
+                    registry_contract.address,
+                    messaging_contract.address,
+                ]
+            ),
+        )
+        self.contract.setTokenStatus(self.mock_erc20_contract.address, ACTIVE)
+
+        INITIAL_BALANCE = 10**20
+        for account in (self.default_user, self.non_default_user):
+            self.set_account_balance(account=account, amount=INITIAL_BALANCE)
+
+    def token_address(self) -> str:
+        return self.mock_erc20_contract.address
+
+    def deposit(
+        self,
+        amount: int,
+        l2_recipient: int,
+        fee: int = 0,
+        user: Optional[EthAccount] = None,
+        message: Optional[list[int]] = None,
+    ) -> EthReceipt:
+        if user is None:
+            user = self.default_user
+        self.mock_erc20_contract.approve.transact(
+            self.contract.address, amount, transact_args={"from": user}
+        )
+        if fee == DYNAMIC_FEE:
+            fee = self.contract.estimateDepositFeeWei.call()
         if message is None:
             return self.contract.deposit(
                 self.token_address(),
@@ -501,11 +661,11 @@ class EthBridgeWrapper(TokenBridgeWrapper):
                 [ZERO_ADDRESS, registry_contract.address, messaging_contract.address]
             ),
         )
-        self.contract.setTokenStatus(ZERO_ADDRESS, ACTIVE)
+        self.contract.setTokenStatus(L1_TOKEN_ADDRESS_OF_ETH, ACTIVE)
         self.eth_test_utils = eth_test_utils
 
     def token_address(self) -> str:
-        return ZERO_ADDRESS
+        return L1_TOKEN_ADDRESS_OF_ETH
 
     def deposit(
         self,
@@ -517,7 +677,8 @@ class EthBridgeWrapper(TokenBridgeWrapper):
     ) -> EthReceipt:
         if user is None:
             user = self.default_user
-
+        if fee == DYNAMIC_FEE:
+            fee = self.contract.estimateDepositFeeWei.call()
         if message is None:
             return self.contract.deposit(
                 self.token_address(),
@@ -547,11 +708,14 @@ class EthBridgeWrapper(TokenBridgeWrapper):
         return tx_receipt.get_cost() + self.get_deposit_fee(tx_receipt)
 
 
-@pytest.fixture(params=[ERC20BridgeWrapper, EthBridgeWrapper], scope="session")
+@pytest.fixture(
+    params=[StarknetTokenBridgeWrapper, EthBridgeWrapper, StarknetERC20BridgeWrapper],
+    scope="session",
+)
 def token_type(request) -> Type[TokenBridgeWrapper]:
     return request.param
 
 
 @pytest.fixture(scope="session")
 def fee() -> int:
-    return 1000
+    return DYNAMIC_FEE

@@ -1,32 +1,63 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts for Cairo v0.7.0 (token/erc20/presets/erc20votes.cairo)
+// OpenZeppelin Contracts for Cairo v0.8.0-beta.1 (token/erc20/presets/erc20votes.cairo)
 
 /// ERC20 with the ERC20Votes extension.
 #[starknet::contract]
 mod ERC20VotesPreset {
     use core::result::ResultTrait;
-    use src::access_control_interface::{IAccessControl, RoleId};
+    use src::access_control_interface::{
+        IAccessControl, RoleId, RoleAdminChanged, RoleGranted, RoleRevoked};
     use src::roles_interface::IMinimalRoles;
-    use src::roles_interface::{GOVERNANCE_ADMIN, UPGRADE_GOVERNOR};
+    use src::roles_interface::{
+        GOVERNANCE_ADMIN, UPGRADE_GOVERNOR,
+        GovernanceAdminAdded, GovernanceAdminRemoved, UpgradeGovernorAdded, UpgradeGovernorRemoved
+    };
+    use src::err_msg::AccessErrors::{
+        INVALID_MINTER,
+        CALLER_MISSING_ROLE,
+        ZERO_ADDRESS,
+        ALREADY_INITIALIZED,
+        ONLY_MINTER,
+        ONLY_UPGRADE_GOVERNOR,
+        ONLY_SELF_CAN_RENOUNCE,
+        GOV_ADMIN_CANNOT_RENOUNCE,
+        ZERO_ADDRESS_GOV_ADMIN,
+    };
+    use src::err_msg::ReplaceErrors::{
+        FINALIZED,
+        UNKNOWN_IMPLEMENTATION,
+        NOT_ENABLED_YET,
+        IMPLEMENTATION_EXPIRED,
+        EIC_LIB_CALL_FAILED,
+        REPLACE_CLASS_HASH_FAILED,
+    };
 
     use src::replaceability_interface::{
         ImplementationData, IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait,
-        EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION
+        EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION,
+        ImplementationAdded, ImplementationRemoved, ImplementationReplaced, ImplementationFinalized
     };
 
     use ERC20::InternalTrait;
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
+    use starknet::{
+        ContractAddress,
+        contract_address_const,
+        get_caller_address,
+        get_block_timestamp
+    };
     use starknet::syscalls::library_call_syscall;
 
     use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
-    use src::mintable_token_interface::IMintableToken;
+    use src::mintable_token_interface::{IMintableToken, IMintableTokenCamel};
     use openzeppelin::governance::utils::interfaces::IVotes;
     use openzeppelin::token::erc20::ERC20;
     use openzeppelin::token::erc20::extensions::ERC20Votes;
-    use openzeppelin::token::erc20::interface::IERC20;
-    use openzeppelin::token::erc20::interface::IERC20CamelOnly;
+    use openzeppelin::token::erc20::interface::{IERC20, IERC20CamelOnly};
     use openzeppelin::utils::cryptography::eip712_draft::EIP712;
+    use openzeppelin::utils::nonces::Nonces;
     use openzeppelin::utils::structs::checkpoints::Checkpoint;
+    const DAPP_NAME: felt252 = 'TOKEN_DELEGATION';
+    const DAPP_VERSION: felt252 = '1.0.0';
 
     #[storage]
     struct Storage {
@@ -77,88 +108,18 @@ mod ERC20VotesPreset {
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
     }
 
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationAdded {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationRemoved {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationReplaced {
-        implementation_data: ImplementationData,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct ImplementationFinalized {
-        impl_hash: ClassHash,
-    }
-
-    // An event that is emitted when `account` is granted `role`.
-    // `sender` is the account that originated the contract call, an admin role
-    // bearer (except if `_grant_role` is called during initialization from the constructor).
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleGranted {
-        role: RoleId,
-        account: ContractAddress,
-        sender: ContractAddress,
-    }
-
-    // An event that is emitted when `account` is revoked `role`.
-    // `sender` is the account that originated the contract call:
-    //   - If using `revoke_role`, it is the admin role bearer.
-    //   - If using `renounce_role`, it is the role bearer (i.e. `account`).
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleRevoked {
-        role: RoleId,
-        account: ContractAddress,
-        sender: ContractAddress,
-    }
-
-    // An event that is emitted when `new_admin_role` is set as `role`'s admin role, replacing
-    // `previous_admin_role`.
-    // `0` is the starting admin for all roles, despite {RoleAdminChanged} not
-    // being emitted signaling this.
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct RoleAdminChanged {
-        role: RoleId,
-        previous_admin_role: RoleId,
-        new_admin_role: RoleId,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct GovernanceAdminAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct GovernanceAdminRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct UpgradeGovernorAdded {
-        added_account: ContractAddress,
-        added_by: ContractAddress,
-    }
-
-    #[derive(Copy, Drop, PartialEq, starknet::Event)]
-    struct UpgradeGovernorRemoved {
-        removed_account: ContractAddress,
-        removed_by: ContractAddress,
-    }
-
-
     //
     // Hooks
     //
 
     impl ERC20VotesHooksImpl of ERC20::ERC20HooksTrait {
+        fn _before_update(
+            ref self: ERC20::ContractState,
+            from: ContractAddress,
+            recipient: ContractAddress,
+            amount: u256
+        ) {}
+
         fn _after_update(
             ref self: ERC20::ContractState,
             from: ContractAddress,
@@ -181,21 +142,20 @@ mod ERC20VotesPreset {
         initial_supply: u256,
         recipient: ContractAddress,
         permitted_minter: ContractAddress,
-        dapp_name: felt252,
-        dapp_version: felt252,
+        provisional_governance_admin: ContractAddress,
         upgrade_delay: u64,
     ) {
         let mut eip712_state = EIP712::unsafe_new_contract_state();
-        EIP712::InternalImpl::initializer(ref eip712_state, dapp_name, dapp_version);
+        EIP712::InternalImpl::initializer(ref eip712_state, DAPP_NAME, DAPP_VERSION);
 
         let mut erc20_state = ERC20::unsafe_new_contract_state();
         ERC20::InternalImpl::initializer(ref erc20_state, name, symbol, decimals);
         ERC20::InternalImpl::_mint::<ERC20VotesHooksImpl>(
             ref erc20_state, recipient, initial_supply
         );
-        assert(permitted_minter.is_non_zero(), 'INVALID_MINTER_ADDRESS');
+        assert(permitted_minter.is_non_zero(), INVALID_MINTER);
         self.permitted_minter.write(permitted_minter);
-        self._initialize_roles(provisional_governance_admin: get_caller_address());
+        self._initialize_roles(:provisional_governance_admin);
         self.upgrade_delay.write(upgrade_delay);
     }
 
@@ -236,7 +196,7 @@ mod ERC20VotesPreset {
         // --- Access Control ---
         fn assert_only_role(self: @ContractState, role: RoleId) {
             let authorized: bool = self.has_role(:role, account: get_caller_address());
-            assert(authorized, 'Caller is missing role');
+            assert(authorized, CALLER_MISSING_ROLE);
         }
 
         //
@@ -248,12 +208,7 @@ mod ERC20VotesPreset {
         fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             if !self.has_role(:role, :account) {
                 self.role_members.write((role, account), true);
-                self
-                    .emit(
-                        Event::RoleGranted(
-                            RoleGranted { role, account, sender: get_caller_address() }
-                        )
-                    );
+                self.emit(RoleGranted { role, account, sender: get_caller_address() });
             }
         }
 
@@ -266,12 +221,7 @@ mod ERC20VotesPreset {
         fn _revoke_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             if self.has_role(:role, :account) {
                 self.role_members.write((role, account), false);
-                self
-                    .emit(
-                        Event::RoleRevoked(
-                            RoleRevoked { role, account, sender: get_caller_address() }
-                        )
-                    );
+                self.emit(RoleRevoked { role, account, sender: get_caller_address() });
             }
         }
 
@@ -283,12 +233,7 @@ mod ERC20VotesPreset {
         fn _set_role_admin(ref self: ContractState, role: RoleId, admin_role: RoleId) {
             let previous_admin_role = self.get_role_admin(:role);
             self.role_admin.write(role, admin_role);
-            self
-                .emit(
-                    Event::RoleAdminChanged(
-                        RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role }
-                    )
-                );
+            self.emit(RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role });
         }
 
         // --- Roles ---
@@ -296,7 +241,7 @@ mod ERC20VotesPreset {
             ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
         ) {
             if !self.has_role(:role, :account) {
-                assert(account.is_non_zero(), 'INVALID_ACCOUNT_ADDRESS');
+                assert(account.is_non_zero(), ZERO_ADDRESS);
                 self.grant_role(:role, :account);
                 self.emit(event);
             }
@@ -320,18 +265,15 @@ mod ERC20VotesPreset {
             ref self: ContractState, provisional_governance_admin: ContractAddress
         ) {
             let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
-            assert(un_initialized, 'ROLES_ALREADY_INITIALIZED');
-            assert(provisional_governance_admin.is_non_zero(), 'ZERO_PROVISIONAL_GOV_ADMIN');
+            assert(un_initialized, ALREADY_INITIALIZED);
+            assert(provisional_governance_admin.is_non_zero(), ZERO_ADDRESS_GOV_ADMIN);
             self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
             self._set_role_admin(role: GOVERNANCE_ADMIN, admin_role: GOVERNANCE_ADMIN);
             self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
         }
 
-        fn only_governance_admin(self: @ContractState) {
-            assert(self.is_governance_admin(get_caller_address()), 'ONLY_GOVERNANCE_ADMIN');
-        }
         fn only_upgrade_governor(self: @ContractState) {
-            assert(self.is_upgrade_governor(get_caller_address()), 'ONLY_UPGRADE_GOVERNOR');
+            assert(self.is_upgrade_governor(get_caller_address()), ONLY_UPGRADE_GOVERNOR);
         }
     }
 
@@ -342,14 +284,24 @@ mod ERC20VotesPreset {
     #[external(v0)]
     impl MintableToken of IMintableToken<ContractState> {
         fn permissioned_mint(ref self: ContractState, account: ContractAddress, amount: u256) {
-            assert(get_caller_address() == self.permitted_minter.read(), 'MINTER_ONLY');
+            assert(get_caller_address() == self.permitted_minter.read(), ONLY_MINTER);
             let mut unsafe_state = ERC20::unsafe_new_contract_state();
             unsafe_state._mint::<ERC20VotesHooksImpl>(recipient: account, :amount);
         }
         fn permissioned_burn(ref self: ContractState, account: ContractAddress, amount: u256) {
-            assert(get_caller_address() == self.permitted_minter.read(), 'MINTER_ONLY');
+            assert(get_caller_address() == self.permitted_minter.read(), ONLY_MINTER);
             let mut unsafe_state = ERC20::unsafe_new_contract_state();
             unsafe_state._burn::<ERC20VotesHooksImpl>(:account, :amount);
+        }
+    }
+
+    #[external(v0)]
+    impl MintableTokenCamelImpl of IMintableTokenCamel<ContractState> {
+        fn permissionedMint(ref self: ContractState, account: ContractAddress, amount: u256) {
+            MintableToken::permissioned_mint(ref self, account, amount);
+        }
+        fn permissionedBurn(ref self: ContractState, account: ContractAddress, amount: u256) {
+            MintableToken::permissioned_burn(ref self, account, amount);
         }
     }
 
@@ -385,12 +337,7 @@ mod ERC20VotesPreset {
             // TODO -  add an assertion that the `implementation_data.impl_hash` is declared.
             self.set_impl_activation_time(:implementation_data, :activation_time);
             self.set_impl_expiration_time(:implementation_data, :expiration_time);
-            self
-                .emit(
-                    Event::ImplementationAdded(
-                        ImplementationAdded { implementation_data: implementation_data }
-                    )
-                );
+            self.emit(ImplementationAdded { implementation_data: implementation_data });
         }
 
         fn remove_implementation(ref self: ContractState, implementation_data: ImplementationData) {
@@ -400,12 +347,7 @@ mod ERC20VotesPreset {
             if (impl_activation_time.is_non_zero()) {
                 self.set_impl_activation_time(:implementation_data, activation_time: 0);
                 self.set_impl_expiration_time(:implementation_data, expiration_time: 0);
-                self
-                    .emit(
-                        Event::ImplementationRemoved(
-                            ImplementationRemoved { implementation_data: implementation_data }
-                        )
-                    );
+                self.emit(ImplementationRemoved { implementation_data: implementation_data });
             }
         }
         // Replaces the non-finalized current implementation to one that was previously added and
@@ -415,7 +357,7 @@ mod ERC20VotesPreset {
             self.only_upgrade_governor();
 
             // Validate implementation is not finalized.
-            assert(!self.is_finalized(), 'FINALIZED');
+            assert(!self.is_finalized(), FINALIZED);
 
             let now = get_block_timestamp();
             let impl_activation_time = self.get_impl_activation_time(:implementation_data);
@@ -423,26 +365,18 @@ mod ERC20VotesPreset {
 
             // Zero activation time means that this implementation & init vector combination
             // was not previously added.
-            assert(impl_activation_time.is_non_zero(), 'UNKNOWN_IMPLEMENTATION');
+            assert(impl_activation_time.is_non_zero(), UNKNOWN_IMPLEMENTATION);
 
-            assert(impl_activation_time <= now, 'NOT_ENABLED_YET');
-            assert(now <= impl_expiration_time, 'IMPLEMENTATION_EXPIRED');
+            assert(impl_activation_time <= now, NOT_ENABLED_YET);
+            assert(now <= impl_expiration_time, IMPLEMENTATION_EXPIRED);
 
             // We emit now so that finalize emits last (if it does).
-            self
-                .emit(
-                    Event::ImplementationReplaced(ImplementationReplaced { implementation_data })
-                );
+            self.emit(ImplementationReplaced { implementation_data });
 
             // Finalize imeplementation, if needed.
             if (implementation_data.final) {
                 self.finalize();
-                self
-                    .emit(
-                        Event::ImplementationFinalized(
-                            ImplementationFinalized { impl_hash: implementation_data.impl_hash }
-                        )
-                    );
+                self.emit(ImplementationFinalized { impl_hash: implementation_data.impl_hash });
             }
 
             // Handle EIC.
@@ -459,14 +393,14 @@ mod ERC20VotesPreset {
                         function_selector: EIC_INITIALIZE_SELECTOR,
                         calldata: calldata_wrapper.span()
                     );
-                    assert(res.is_ok(), 'EIC_LIB_CALL_FAILED');
+                    assert(res.is_ok(), EIC_LIB_CALL_FAILED);
                 },
                 Option::None(()) => {}
             };
 
             // Replace the class hash.
             let result = starknet::replace_class_syscall(implementation_data.impl_hash);
-            assert(result.is_ok(), 'REPLACE_CLASSHASH_FAILED');
+            assert(result.is_ok(), REPLACE_CLASS_HASH_FAILED);
 
             // Remove implementation, as it was consumed.
             self.set_impl_activation_time(:implementation_data, activation_time: 0);
@@ -500,7 +434,7 @@ mod ERC20VotesPreset {
         }
 
         fn renounce_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
-            assert(get_caller_address() == account, 'Can only renounce role for self');
+            assert(get_caller_address() == account, ONLY_SELF_CAN_RENOUNCE);
             self._revoke_role(:role, :account);
         }
     }
@@ -548,7 +482,7 @@ mod ERC20VotesPreset {
         }
 
         fn renounce(ref self: ContractState, role: RoleId) {
-            assert(role != GOVERNANCE_ADMIN, 'GOV_ADMIN_CANNOT_SELF_REMOVE');
+            assert(role != GOVERNANCE_ADMIN, GOV_ADMIN_CANNOT_RENOUNCE);
             self.renounce_role(:role, account: get_caller_address())
         }
     }
@@ -590,9 +524,9 @@ mod ERC20VotesPreset {
         fn transfer(ref self: ContractState, recipient: ContractAddress, amount: u256) -> bool {
             let mut unsafe_state = ERC20::unsafe_new_contract_state();
             let sender = starknet::get_caller_address();
-            ERC20::InternalImpl::_transfer::<ERC20VotesHooksImpl>(
-                ref unsafe_state, sender, recipient, amount
-            );
+            ERC20::InternalImpl::_transfer::<
+                ERC20VotesHooksImpl
+            >(ref unsafe_state, sender, recipient, amount);
             true
         }
 
@@ -707,6 +641,13 @@ mod ERC20VotesPreset {
                 ref unsafe_state, delegator, delegatee, nonce, expiry, signature
             );
         }
+    }
+
+    /// Returns the next unused nonce for an address.
+    #[external(v0)]
+    fn nonces(self: @ContractState, owner: ContractAddress) -> felt252 {
+        let unsafe_state = Nonces::unsafe_new_contract_state();
+        Nonces::nonces(@unsafe_state, owner)
     }
 
     /// Get number of checkpoints for `account`.

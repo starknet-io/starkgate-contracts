@@ -26,5 +26,9 @@ jobs:
       - name: Setup...
         run: scripts/setup.sh
 
+      - name: Build...
+        run: scripts/build-cairo.sh &&
+             ./scripts/build-solidity.sh
+
       - name: Run Tests...
         run: scripts/tests.sh

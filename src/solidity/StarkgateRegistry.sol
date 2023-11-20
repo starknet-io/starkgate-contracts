@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
 
+import "src/solidity/IStarkgateRegistry.sol";
+import "src/solidity/IStarkgateService.sol";
+import "src/solidity/StarkgateConstants.sol";
 import "starkware/solidity/interfaces/Identity.sol";
 import "starkware/solidity/interfaces/ProxySupport.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
-import "src/solidity/IStarkgateRegistry.sol";
-import "src/solidity/IStarkgateService.sol";
-import "src/solidity/StarkgateConstants.sol";
 
-contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, IStarkgateRegistry {
+contract StarkgateRegistry is Identity, ProxySupport, IStarkgateRegistry {
     using Addresses for address;
     // Named storage slot tags.
     string internal constant MANAGER_TAG = "STARKGATE_REGISTRY_MANAGER_SLOT_TAG";
     string internal constant TOKEN_TO_BRIDGE_TAG = "STARKGATE_REGISTRY_TOKEN_TO_BRIDGE_SLOT_TAG";
     string internal constant TOKEN_TO_WITHDRAWAL_BRIDGES_TAG =
         "STARKGATE_REGISTRY_TOKEN_TO_WITHDRAWAL_BRIDGES_SLOT_TAG";
+    event TokenSelfRemoved(address indexed token, address indexed bridge);
+    event TokenStatusBlocked(address indexed token);
+    event TokenEnlisted(address indexed token, address indexed bridge);
 
     // Storage Getters.
     function manager() internal view returns (address) {
@@ -43,11 +46,8 @@ contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, I
         _;
     }
 
-    /**
-      Returns a string that identifies the contract.
-    */
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarkgateRegistry_2023_1";
+        return "StarkWare_StarkgateRegistry_2.0_1";
     }
 
     /*
@@ -77,37 +77,34 @@ contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, I
         require(manager_.isContract(), "INVALID_MANAGER_CONTRACT_ADDRESS");
     }
 
-    function getBridge(address tokenAddress) external view returns (address) {
-        return tokenToBridge()[tokenAddress];
+    function getBridge(address token) external view returns (address) {
+        return tokenToBridge()[token];
     }
 
     /**
       Add a mapping between a token and the bridge handling it.
       Ensuring unique enrollment.
     */
-    function enlistToken(address tokenAddress, address bridge) external onlyManager {
-        address currentBridge = tokenToBridge()[tokenAddress];
+    function enlistToken(address token, address bridge) external onlyManager {
+        address currentBridge = tokenToBridge()[token];
         require(
-            currentBridge == address(0) || currentBridge == CANNOT_DEPLOY_BRIDGE,
-            "THE_TOKEN_ALREADY_ENROLLED"
+            currentBridge == address(0) || currentBridge == BLOCKED_TOKEN,
+            "TOKEN_ALREADY_ENROLLED"
         );
-        tokenToBridge()[tokenAddress] = bridge;
-        if (!containsAddress(tokenToWithdrawalBridges()[tokenAddress], bridge)) {
-            tokenToWithdrawalBridges()[tokenAddress].push(bridge);
+        emit TokenEnlisted(token, bridge);
+        tokenToBridge()[token] = bridge;
+        if (!containsAddress(tokenToWithdrawalBridges()[token], bridge)) {
+            tokenToWithdrawalBridges()[token].push(bridge);
         }
-    }
-
-    function deactivateToken(address token) external onlyManager {
-        tokenToBridge()[token] = CANNOT_DEPLOY_BRIDGE;
     }
 
     /**
       Block a specific token from being used in the StarkGate.
       A blocked token cannot be deployed.
     */
-    // TODO : add test.
     function blockToken(address token) external onlyManager {
-        tokenToBridge()[token] = CANNOT_DEPLOY_BRIDGE;
+        emit TokenStatusBlocked(token);
+        tokenToBridge()[token] = BLOCKED_TOKEN;
     }
 
     function getWithdrawalBridges(address token) external view returns (address[] memory bridges) {
@@ -121,6 +118,7 @@ contract StarkgateRegistry is Identity, StarknetBridgeConstants, ProxySupport, I
     function selfRemove(address token) external {
         require(tokenToBridge()[token] == msg.sender, "BRIDGE_MISMATCH_CANNOT_REMOVE_TOKEN");
         require(!IStarkgateService(msg.sender).isServicingToken(token), "TOKEN_IS_STILL_SERVICED");
+        emit TokenSelfRemoved(token, msg.sender);
         tokenToBridge()[token] = address(0x0);
     }
 

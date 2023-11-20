@@ -6,11 +6,10 @@ import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
 abstract contract StarknetTokenStorage {
     // Named storage slot tags.
-    string internal constant L2_TOKEN_TAG = "STARKNET_TOKEN_BRIDGE_L2_TOKEN_CONTRACT";
+    string internal constant L2_BRIDGE_TAG = "STARKNET_TOKEN_BRIDGE_L2_TOKEN_CONTRACT";
     string internal constant MANAGER_TAG = "STARKNET_TOKEN_BRIDGE_MANAGER_SLOT_TAG";
     string internal constant MESSAGING_CONTRACT_TAG = "STARKNET_TOKEN_BRIDGE_MESSAGING_CONTRACT";
     string internal constant DEPOSITOR_ADDRESSES_TAG = "STARKNET_TOKEN_BRIDGE_DEPOSITOR_ADDRESSES";
-    string internal constant BRIDGE_IS_ACTIVE_TAG = "STARKNET_TOKEN_BRIDGE_IS_ACTIVE";
 
     enum TokenStatus {
         Unknown,
@@ -47,15 +46,11 @@ abstract contract StarknetTokenStorage {
     }
 
     function l2TokenBridge() internal view returns (uint256) {
-        return NamedStorage.getUintValue(L2_TOKEN_TAG);
+        return NamedStorage.getUintValue(L2_BRIDGE_TAG);
     }
 
     function messagingContract() internal view returns (IStarknetMessaging) {
         return IStarknetMessaging(NamedStorage.getAddressValue(MESSAGING_CONTRACT_TAG));
-    }
-
-    function isActive() public view returns (bool) {
-        return NamedStorage.getBoolValue(BRIDGE_IS_ACTIVE_TAG);
     }
 
     function depositors() internal pure returns (mapping(uint256 => address) storage) {
@@ -68,14 +63,10 @@ abstract contract StarknetTokenStorage {
     }
 
     function l2TokenBridge(uint256 value) internal {
-        NamedStorage.setUintValueOnce(L2_TOKEN_TAG, value);
+        NamedStorage.setUintValueOnce(L2_BRIDGE_TAG, value);
     }
 
     function messagingContract(address contract_) internal {
         NamedStorage.setAddressValueOnce(MESSAGING_CONTRACT_TAG, contract_);
-    }
-
-    function setActive() internal {
-        return NamedStorage.setBoolValue(BRIDGE_IS_ACTIVE_TAG, true);
     }
 }

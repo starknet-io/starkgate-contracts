@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "starkware/solidity/tokens/ERC20/IERC20.sol";
+import "src/solidity/StarkgateConstants.sol";
 
 /**
     A library to provide withdrawal limit functionality.
@@ -31,7 +32,13 @@ library WithdrawalLimit {
         The allowance is calculated as a percentage of the current balance.
      */
     function calculateIntradayAllowance(address token) internal view returns (uint256) {
-        uint256 currentBalance = IERC20(token).balanceOf(address(this));
+        uint256 currentBalance;
+        // If the token is Eth and not an ERC20 - calculate balance accordingly.
+        if (token == ETH) {
+            currentBalance = address(this).balance;
+        } else {
+            currentBalance = IERC20(token).balanceOf(address(this));
+        }
         uint256 withdrawLimitPct = getWithdrawLimitPct();
         return (currentBalance * withdrawLimitPct) / 100;
     }

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// OpenZeppelin Contracts for Cairo v0.7.0 (utils/constants.cairo)
+// OpenZeppelin Contracts for Cairo v0.8.0-beta.1 (utils/constants.cairo)
 
 //
 // Interface ids
@@ -22,8 +22,8 @@ const IERC721_RECEIVER_ID: felt252 =
     0x3a0dff5f70d80458ad14ae37bb182a728e3c8cdda0402a5daa86620bdf910bc;
 
 // AccessControl
-// See: https://github.com/OpenZeppelin/openzeppelin-contracts/blob
-// /master/contracts/access/IAccessControl.sol
+// See: https://github.com/
+//      OpenZeppelin/openzeppelin-contracts/blob/master/contracts/access/IAccessControl.sol
 const IACCESSCONTROL_ID: felt252 =
     0x23700be02858dbe2ac4dc9c9f66d0b6b0ed81ec7f970ca6844500a56ff61751;
 
