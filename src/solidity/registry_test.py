@@ -7,7 +7,7 @@ from solidity.conftest import (
     DEFAULT_DEPOSIT_FEE,
     MAX_UINT,
     L2_TOKEN_CONTRACT,
-    HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+    HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
     UNKNOWN,
     PENDING,
     ACTIVE,
@@ -213,7 +213,7 @@ def test_checkDeploymentStatus(
     l1_to_l2_msg = StarknetMessageToL2(
         from_address=int(bridge_contract.address, 16),
         to_address=L2_TOKEN_CONTRACT,
-        l1_handler_selector=HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+        l1_handler_selector=HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
         payload=payload,
         nonce=0,
     )

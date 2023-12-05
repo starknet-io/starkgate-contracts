@@ -6,6 +6,7 @@ import "starkware/solidity/interfaces/ExternalInitializer.sol";
 import "starkware/solidity/interfaces/Identity.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "starkware/solidity/libraries/RolesLib.sol";
+import "src/solidity/WithdrawalLimit.sol";
 
 /*
   This contract is an external initializing contract that
@@ -14,16 +15,17 @@ import "starkware/solidity/libraries/RolesLib.sol";
 contract StarkgateUpgradeAssistExternalInitializer is ExternalInitializer, StarknetTokenStorage {
     event LegacyBridgeUpgraded(address indexed bridge, address indexed token);
 
-    address constant ETH = address(0x455448);
-
     // Legacy named storage slot tags.
-    string constant BRIDGED_TOKEN_TAG = "STARKNET_ERC20_TOKEN_BRIDGE_TOKEN_ADDRESS";
     string constant MAX_DEPOSIT_TAG = "STARKNET_TOKEN_BRIDGE_MAX_DEPOSIT";
     string constant MAX_TOTAL_BALANCE_TAG = "STARKNET_TOKEN_BRIDGE_MAX_TOTAL_BALANCE";
 
     // Legacy getters.
     function getBridgedToken() internal view returns (address) {
         return NamedStorage.getAddressValue(BRIDGED_TOKEN_TAG);
+    }
+
+    function setBridgedToken(address contract_) internal {
+        NamedStorage.setAddressValue(BRIDGED_TOKEN_TAG, contract_);
     }
 
     function getMaxDeposit() internal view returns (uint256) {
@@ -64,6 +66,7 @@ contract StarkgateUpgradeAssistExternalInitializer is ExternalInitializer, Stark
         address bridgedToken = getBridgedToken();
         if (bridgedToken == address(0)) {
             bridgedToken = ETH;
+            setBridgedToken(ETH);
         }
 
         // Populate token setting new structure.
@@ -74,7 +77,7 @@ contract StarkgateUpgradeAssistExternalInitializer is ExternalInitializer, Stark
 
         settings.tokenStatus = TokenStatus.Active;
         settings.maxTotalBalance = maxTotalBalance;
-
+        WithdrawalLimit.setWithdrawLimitPct(WithdrawalLimit.DEFAULT_WITHDRAW_LIMIT_PCT);
         emit LogExternalInitialize(data);
         emit LegacyBridgeUpgraded(address(this), bridgedToken);
     }

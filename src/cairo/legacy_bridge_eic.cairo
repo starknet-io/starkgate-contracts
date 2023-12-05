@@ -5,12 +5,14 @@ mod LegacyBridgeUpgradeEIC {
     use starknet::{
         ContractAddress, get_caller_address, EthAddress, EthAddressIntoFelt252, EthAddressSerde
     };
+    use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use super::super::access_control_interface::{
         IAccessControl, RoleId, RoleAdminChanged, RoleGranted
     };
     use super::super::replaceability_interface::IEICInitializable;
     use super::super::roles_interface::{
-        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN, UPGRADE_GOVERNOR
+        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, SECURITY_ADMIN, SECURITY_AGENT,
+        TOKEN_ADMIN, UPGRADE_GOVERNOR
     };
 
     #[storage]
@@ -35,9 +37,7 @@ mod LegacyBridgeUpgradeEIC {
     #[event]
     enum Event {
         // --- Access Control ---
-        #[event]
         RoleGranted: RoleGranted,
-        #[event]
         RoleAdminChanged: RoleAdminChanged,
     }
 
@@ -71,6 +71,10 @@ mod LegacyBridgeUpgradeEIC {
             self._set_role_admin(role: OPERATOR, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: TOKEN_ADMIN, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
+
+            self._grant_role(role: SECURITY_ADMIN, account: provisional_governance_admin);
+            self._set_role_admin(role: SECURITY_ADMIN, admin_role: SECURITY_ADMIN);
+            self._set_role_admin(role: SECURITY_AGENT, admin_role: SECURITY_ADMIN);
         }
 
         fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
@@ -105,6 +109,10 @@ mod LegacyBridgeUpgradeEIC {
             assert(l2_token.is_non_zero(), 'ZERO_L2_TOKEN');
 
             assert(legacy_l2_token == l2_token, 'TOKEN_ADDRESS_MISMATCH');
+
+            // Implicitly assert that the L2 token supports snake case (i.e. already upgraded.)
+            IERC20Dispatcher { contract_address: l2_token }.total_supply();
+
             assert(self.l1_l2_token_map.read(l1_token).is_zero(), 'L2_BRIDGE_ALREADY_INITIALIZED');
             assert(self.l2_l1_token_map.read(l2_token).is_zero(), 'L2_BRIDGE_ALREADY_INITIALIZED');
 

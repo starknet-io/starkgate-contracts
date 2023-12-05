@@ -72,29 +72,18 @@ mod ERC20 {
         Transfer: Transfer,
         Approval: Approval,
         // --- Replaceability ---
-        #[event]
         ImplementationAdded: ImplementationAdded,
-        #[event]
         ImplementationRemoved: ImplementationRemoved,
-        #[event]
         ImplementationReplaced: ImplementationReplaced,
-        #[event]
         ImplementationFinalized: ImplementationFinalized,
         // --- Access Control ---
-        #[event]
         RoleGranted: RoleGranted,
-        #[event]
         RoleRevoked: RoleRevoked,
-        #[event]
         RoleAdminChanged: RoleAdminChanged,
         // --- Roles ---
-        #[event]
         GovernanceAdminAdded: GovernanceAdminAdded,
-        #[event]
         GovernanceAdminRemoved: GovernanceAdminRemoved,
-        #[event]
         UpgradeGovernorAdded: UpgradeGovernorAdded,
-        #[event]
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
     }
 

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
 
-import "starkware/solidity/components/OverrideLegacyProxyGovernance.sol";
 import "starkware/solidity/interfaces/Identity.sol";
 import "starkware/solidity/interfaces/ProxySupport.sol";
 import "starkware/solidity/libraries/Addresses.sol";
@@ -26,8 +25,7 @@ contract StarknetTokenBridge is
     IStarkgateService,
     Identity,
     StarknetTokenStorage,
-    ProxySupport,
-    OverrideLegacyProxyGovernance
+    ProxySupport
 {
     using Addresses for address;
     using Felt252 for string;
@@ -90,7 +88,7 @@ contract StarknetTokenBridge is
     event WithdrawalLimitDisabled(address indexed sender, address indexed token);
 
     function identify() external pure virtual returns (string memory) {
-        return "StarkWare_StarknetTokenBridge_2.0_1";
+        return "StarkWare_StarknetTokenBridge_2.0_2";
     }
 
     function validateInitData(bytes calldata data) internal view virtual override {
@@ -406,8 +404,8 @@ contract StarknetTokenBridge is
             ? ARGUMENT_SIZE + MESSAGE_METADATA_SIZE
             : ARGUMENT_SIZE;
         uint256[] memory payload = new uint256[](MESSAGE_OFFSET + message.length);
-        payload[0] = l2Recipient;
-        payload[1] = uint256(uint160(token));
+        payload[0] = uint256(uint160(token));
+        payload[1] = l2Recipient;
         payload[2] = amount & (UINT256_PART_SIZE - 1);
         payload[3] = amount >> UINT256_PART_SIZE_BITS;
         if (withMessage) {
@@ -443,7 +441,7 @@ contract StarknetTokenBridge is
 
         (bytes32 deploymentMsgHash, ) = messagingContract().sendMessageToL2{value: msg.value}(
             l2TokenBridge(),
-            HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+            HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
             deployMessagePayload(token)
         );
         return deploymentMsgHash;

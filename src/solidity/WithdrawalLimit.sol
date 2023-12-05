@@ -9,7 +9,7 @@ import "src/solidity/StarkgateConstants.sol";
     A library to provide withdrawal limit functionality.
  */
 library WithdrawalLimit {
-    uint256 constant DEFAULT_WITHDRAW_LIMIT_PCT = 12;
+    uint256 constant DEFAULT_WITHDRAW_LIMIT_PCT = 5;
     string internal constant WITHDRAW_LIMIT_PCT_TAG = "WITHDRAWL_LIMIT_WITHDRAW_LIMIT_PCT_SLOT_TAG";
     string internal constant INTRADAY_QUOTA_TAG = "WITHDRAWL_LIMIT_INTRADAY_QUOTA_SLOT_TAG";
 

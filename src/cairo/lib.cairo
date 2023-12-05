@@ -13,6 +13,7 @@ mod token_test_setup_interface;
 mod token_bridge;
 mod legacy_bridge_eic;
 mod roles_init_eic;
+mod update_712_vars_eic;
 mod err_msg;
 
 // Tests.
@@ -26,3 +27,4 @@ mod stub_msg_receiver;
 mod replaceability_test;
 mod legacy_bridge_tester;
 mod legacy_eic_test;
+mod update712_eic_tester;

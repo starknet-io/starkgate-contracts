@@ -32,6 +32,18 @@ def test_addExistingBridge(
         )
 
 
+def test_add_multi_as_existing_bridge(
+    token_admin: EthContract,
+    bridge_contract: EthContract,
+    manager_contract: EthContract,
+):
+    # Cannot add the multi-bridge as an existing bridge.
+    with pytest.raises(EthRevertException, match="CANNOT_ADD_MAIN_MULTI_BRIDGE_AS_EXISTING"):
+        manager_contract.addExistingBridge(
+            TOKEN_ADDRESS, bridge_contract.address, transact_args={"from": token_admin}
+        )
+
+
 def test_blockToken(
     governor: EthAccount,
     token_admin: EthContract,

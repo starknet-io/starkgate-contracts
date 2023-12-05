@@ -13,7 +13,7 @@ from solidity.conftest import (
     MAX_UINT,
     HANDLE_TOKEN_DEPOSIT_SELECTOR,
     HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-    HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+    HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
     TOKEN_ADDRESS,
 )
 
@@ -37,7 +37,7 @@ DEPOSIT_AMOUNT = 2 * HALF_DEPOSIT_AMOUNT
 WITHDRAW_AMOUNT = 3
 MESSAGE_CANCEL_DELAY = 1000
 
-DEFAULT_WITHDRAW_LIMIT_PCT = 12
+DEFAULT_WITHDRAW_LIMIT_PCT = 5
 
 
 @pytest.fixture
@@ -93,7 +93,7 @@ def test_selectors():
         get_selector_from_name("handle_deposit_with_message")
         == HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR
     )
-    assert get_selector_from_name("handle_token_enrollment") == HANDLE_TOKEN_ENROLLMENT_SELECTOR
+    assert get_selector_from_name("handle_token_deployment") == HANDLE_TOKEN_DEPLOYMENT_SELECTOR
 
 
 def test_set_l2_token_contract_invalid_address(
@@ -390,8 +390,8 @@ def test_deposit_message_sent_consumed(
         to_address=L2_TOKEN_CONTRACT,
         l1_handler_selector=HANDLE_TOKEN_DEPOSIT_SELECTOR,
         payload=[
-            L2_RECIPIENT,
             int(token_bridge_wrapper.token_address(), 16),
+            L2_RECIPIENT,
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
         ],
@@ -403,8 +403,8 @@ def test_deposit_message_sent_consumed(
         to_address=L2_TOKEN_CONTRACT,
         l1_handler_selector=HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
         payload=[
-            L2_RECIPIENT,
             int(token_bridge_wrapper.token_address(), 16),
+            L2_RECIPIENT,
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
             int(token_bridge_wrapper.default_user.address, 16),
@@ -858,7 +858,7 @@ def test_cancel_deposit(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_TOKEN_DEPOSIT_SELECTOR,
-        "payload": [L2_RECIPIENT, int(token_bridge_wrapper.token_address(), 16), DEPOSIT_AMOUNT, 0],
+        "payload": [int(token_bridge_wrapper.token_address(), 16), L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
 
@@ -899,7 +899,7 @@ def test_cancel_deposit(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_TOKEN_DEPOSIT_SELECTOR,
-        "payload": [L2_RECIPIENT, int(token_bridge_wrapper.token_address(), 16), DEPOSIT_AMOUNT, 0],
+        "payload": [int(token_bridge_wrapper.token_address(), 16), L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
         "nonce": 0,
     }
 
@@ -965,8 +965,8 @@ def test_cancel_deposit_with_message(
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
         "payload": [
-            L2_RECIPIENT,
             int(token_bridge_wrapper.token_address(), 16),
+            L2_RECIPIENT,
             DEPOSIT_AMOUNT,
             0,
             int(token_bridge_wrapper.default_user.address, 16),
@@ -1017,8 +1017,8 @@ def test_cancel_deposit_with_message(
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
         "payload": [
-            L2_RECIPIENT,
             int(token_bridge_wrapper.token_address(), 16),
+            L2_RECIPIENT,
             DEPOSIT_AMOUNT,
             0,
             int(token_bridge_wrapper.default_user.address, 16),

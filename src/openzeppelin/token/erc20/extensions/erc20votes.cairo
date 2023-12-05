@@ -38,20 +38,20 @@ mod ERC20Votes {
     }
 
     #[event]
-    #[derive(Drop, starknet::Event)]
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
     enum Event {
         DelegateChanged: DelegateChanged,
         DelegateVotesChanged: DelegateVotesChanged,
     }
 
-    #[derive(Drop, starknet::Event)]
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DelegateChanged {
         delegator: ContractAddress,
         from_delegate: ContractAddress,
         to_delegate: ContractAddress
     }
 
-    #[derive(Drop, starknet::Event)]
+    #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DelegateVotesChanged {
         delegate: ContractAddress,
         previous_votes: u256,

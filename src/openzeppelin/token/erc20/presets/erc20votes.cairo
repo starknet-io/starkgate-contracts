@@ -78,33 +78,29 @@ mod ERC20VotesPreset {
         role_members: LegacyMap<(RoleId, ContractAddress), bool>,
     }
 
+
     #[event]
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     enum Event {
+        // --- ERC20 ---
+        #[flat]
+        ERC20Event: ERC20::Event,
+        // --- Votes ---
+        #[flat]
+        ERC20VotesEvent: ERC20Votes::Event,
         // --- Replaceability ---
-        #[event]
         ImplementationAdded: ImplementationAdded,
-        #[event]
         ImplementationRemoved: ImplementationRemoved,
-        #[event]
         ImplementationReplaced: ImplementationReplaced,
-        #[event]
         ImplementationFinalized: ImplementationFinalized,
         // --- Access Control ---
-        #[event]
         RoleGranted: RoleGranted,
-        #[event]
         RoleRevoked: RoleRevoked,
-        #[event]
         RoleAdminChanged: RoleAdminChanged,
         // --- Roles ---
-        #[event]
         GovernanceAdminAdded: GovernanceAdminAdded,
-        #[event]
         GovernanceAdminRemoved: GovernanceAdminRemoved,
-        #[event]
         UpgradeGovernorAdded: UpgradeGovernorAdded,
-        #[event]
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
     }
 

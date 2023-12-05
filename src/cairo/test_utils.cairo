@@ -530,7 +530,7 @@ mod test_utils {
 
         // Deploy token contract.
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             :l1_token,

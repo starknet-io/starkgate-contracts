@@ -415,21 +415,21 @@ mod token_bridge_test {
 
     #[test]
     #[available_gas(30000000)]
-    fn test_successful_erc20_handle_token_enrollment() {
+    fn test_successful_erc20_handle_token_deployment() {
         // Set ERC20 class hash.
         let erc20_class_hash = stock_erc20_class_hash();
-        _handle_token_enrollment(:erc20_class_hash);
+        _handle_token_deployment(:erc20_class_hash);
     }
 
     #[test]
     #[available_gas(30000000)]
-    fn test_successful_votes_erc20_handle_token_enrollment() {
+    fn test_successful_votes_erc20_handle_token_deployment() {
         // Set Votes ERC20 class hash.
         let erc20_class_hash = votes_erc20_class_hash();
-        _handle_token_enrollment(:erc20_class_hash);
+        _handle_token_deployment(:erc20_class_hash);
     }
 
-    fn _handle_token_enrollment(erc20_class_hash: ClassHash) {
+    fn _handle_token_deployment(erc20_class_hash: ClassHash) {
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
         let token_bridge_address = deploy_token_bridge();
@@ -460,7 +460,7 @@ mod token_bridge_test {
 
         starknet::testing::set_contract_address(token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             :l1_token,
@@ -498,14 +498,14 @@ mod token_bridge_test {
     }
 
 
-    fn internal_enroll_token(
+    fn internal_deploy_token(
         token_bridge_address: ContractAddress, l1_bridge_address: EthAddress, l1_token: EthAddress
     ) -> ContractAddress {
         let token_bridge = get_token_bridge(:token_bridge_address);
         let orig = get_contract_address();
         starknet::testing::set_contract_address(token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token: l1_token,
@@ -520,8 +520,8 @@ mod token_bridge_test {
 
     #[test]
     #[available_gas(30000000)]
-    fn test_enrolled_token_governance() {
-        // Enroll l2 tokens and check it's governance.
+    fn test_deployed_token_governance() {
+        // Deploy l2 tokens and check it's governance.
         // Alternate the governance set on the bridge mid way.
         let l1_token1 = EthAddress { address: 1973 };
         let l1_token2 = EthAddress { address: 2023 };
@@ -539,12 +539,12 @@ mod token_bridge_test {
 
         token_bridge_admin.set_l2_token_governance(caller());
         let t1_roles = get_roles(
-            internal_enroll_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token1)
+            internal_deploy_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token1)
         );
 
         token_bridge_admin.set_l2_token_governance(not_caller());
         let t2_roles = get_roles(
-            internal_enroll_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token2)
+            internal_deploy_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token2)
         );
 
         assert(t1_roles.is_governance_admin(caller()), 'l2_token1 Role not granted');
@@ -554,12 +554,12 @@ mod token_bridge_test {
     }
 
 
-    // Tests an attempt to enroll a token a onto an upgraded legacy bridge.
-    // This is not allowed. Legacy bridges are blocked from enrolling new tokens.
+    // Tests an attempt to deploy a token a onto an upgraded legacy bridge.
+    // This is not allowed. Legacy bridges are blocked from deploying new tokens.
     #[test]
-    #[should_panic(expected: ('ENROLL_TOKEN_DISALLOWED',))]
+    #[should_panic(expected: ('DEPLOY_TOKEN_DISALLOWED',))]
     #[available_gas(30000000)]
-    fn test_handle_token_enrollment_legacy_bridge() {
+    fn test_handle_token_deployment_legacy_bridge() {
         // Create an arbitrary l1 bridge, token address and l1 recipient.
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
 
@@ -568,14 +568,14 @@ mod token_bridge_test {
             :l1_token, :l2_recipient, token_mismatch: false
         );
 
-        // Enroll the token.
-        internal_enroll_token(:token_bridge_address, :l1_bridge_address, :l1_token);
+        // Deploy the token.
+        internal_deploy_token(:token_bridge_address, :l1_bridge_address, :l1_token);
     }
 
     #[test]
     #[should_panic(expected: ('TOKEN_ALREADY_EXISTS',))]
     #[available_gas(30000000)]
-    fn test_handle_token_enrollment_twice() {
+    fn test_handle_token_deployment_twice() {
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
         let token_bridge_address = deploy_token_bridge();
@@ -591,11 +591,11 @@ mod token_bridge_test {
         starknet::testing::set_contract_address(token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
 
-        // Enroll the token twice.
+        // Deploy the token twice.
         let name = 'TOKEN_NAME';
         let symbol = 'TOKEN_SYMBOL';
         let decimals = 6_u8;
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token: l1_token,
@@ -603,7 +603,7 @@ mod token_bridge_test {
             symbol: SYMBOL,
             decimals: DECIMALS
         );
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token: l1_token,
@@ -616,7 +616,7 @@ mod token_bridge_test {
     #[test]
     #[should_panic(expected: ('EXPECTED_FROM_BRIDGE_ONLY',))]
     #[available_gas(30000000)]
-    fn test_non_l1_token_message_handle_token_enrollment() {
+    fn test_non_l1_token_message_handle_token_deployment() {
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
 
         let token_bridge_address = deploy_token_bridge();
@@ -626,7 +626,7 @@ mod token_bridge_test {
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
 
         let l1_not_bridge_address = EthAddress { address: NON_DEFAULT_L1_BRIDGE_ETH_ADDRESS };
-        TokenBridge::handle_token_enrollment(
+        TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_not_bridge_address.into(),
             l1_token: l1_token,

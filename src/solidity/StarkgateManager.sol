@@ -78,6 +78,7 @@ contract StarkgateManager is Identity, IStarkgateManager, ProxySupport {
     }
 
     function addExistingBridge(address token, address bridge_) external onlyTokenAdmin {
+        require(bridge() != bridge_, "CANNOT_ADD_MAIN_MULTI_BRIDGE_AS_EXISTING");
         IStarkgateRegistry(registry()).enlistToken(token, bridge_);
         emit ExistingBridgeAdded(token, bridge_);
     }

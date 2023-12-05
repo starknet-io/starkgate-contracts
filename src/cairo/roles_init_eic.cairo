@@ -13,7 +13,8 @@ mod RolesExternalInitializer {
     };
     use super::super::replaceability_interface::IEICInitializable;
     use super::super::roles_interface::{
-        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN, UPGRADE_GOVERNOR
+        APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, SECURITY_ADMIN, SECURITY_AGENT,
+        TOKEN_ADMIN, UPGRADE_GOVERNOR
     };
 
     #[storage]
@@ -29,9 +30,7 @@ mod RolesExternalInitializer {
     #[event]
     enum Event {
         // --- Access Control ---
-        #[event]
         RoleGranted: RoleGranted,
-        #[event]
         RoleAdminChanged: RoleAdminChanged,
     }
 
@@ -57,6 +56,10 @@ mod RolesExternalInitializer {
             self._set_role_admin(role: OPERATOR, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: TOKEN_ADMIN, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: UPGRADE_GOVERNOR, admin_role: GOVERNANCE_ADMIN);
+
+            self._grant_role(role: SECURITY_ADMIN, account: provisional_governance_admin);
+            self._set_role_admin(role: SECURITY_ADMIN, admin_role: SECURITY_ADMIN);
+            self._set_role_admin(role: SECURITY_AGENT, admin_role: SECURITY_ADMIN);
         }
 
         fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {

@@ -62,7 +62,7 @@ mod TokenBridge {
     const CONTRACT_IDENTITY: felt252 = 'STARKGATE';
     const CONTRACT_VERSION: felt252 = 2;
 
-    const DEFAULT_DAILY_WITHDRAW_LIMIT_PCT: u8 = 10;
+    const DEFAULT_DAILY_WITHDRAW_LIMIT_PCT: u8 = 5;
 
     const SECONDS_IN_DAY: u64 = 86400;
     const DEFAULT_UPGRADE_DELAY: u64 = 0;
@@ -123,76 +123,42 @@ mod TokenBridge {
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     enum Event {
         // --- Token Bridge ---
-        #[event]
         L1BridgeSet: L1BridgeSet,
-        #[event]
         Erc20ClassHashStored: Erc20ClassHashStored,
-        #[event]
         L2TokenGovernanceChanged: L2TokenGovernanceChanged,
-        #[event]
         withdraw_initiated: withdraw_initiated,
-        #[event]
         WithdrawInitiated: WithdrawInitiated,
-        #[event]
         deposit_handled: deposit_handled,
-        #[event]
         DepositHandled: DepositHandled,
-        #[event]
         DepositWithMessageHandled: DepositWithMessageHandled,
-        #[event]
         DeployHandled: DeployHandled,
-        #[event]
         WithdrawalLimitEnabled: WithdrawalLimitEnabled,
-        #[event]
         WithdrawalLimitDisabled: WithdrawalLimitDisabled,
         // --- Replaceability ---
-        #[event]
         ImplementationAdded: ImplementationAdded,
-        #[event]
         ImplementationRemoved: ImplementationRemoved,
-        #[event]
         ImplementationReplaced: ImplementationReplaced,
-        #[event]
         ImplementationFinalized: ImplementationFinalized,
         // --- Access Control ---
-        #[event]
         RoleGranted: RoleGranted,
-        #[event]
         RoleRevoked: RoleRevoked,
-        #[event]
         RoleAdminChanged: RoleAdminChanged,
         // --- Roles ---
-        #[event]
         AppGovernorAdded: AppGovernorAdded,
-        #[event]
         AppGovernorRemoved: AppGovernorRemoved,
-        #[event]
         AppRoleAdminAdded: AppRoleAdminAdded,
-        #[event]
         AppRoleAdminRemoved: AppRoleAdminRemoved,
-        #[event]
         GovernanceAdminAdded: GovernanceAdminAdded,
-        #[event]
         GovernanceAdminRemoved: GovernanceAdminRemoved,
-        #[event]
         OperatorAdded: OperatorAdded,
-        #[event]
         OperatorRemoved: OperatorRemoved,
-        #[event]
         TokenAdminAdded: TokenAdminAdded,
-        #[event]
         TokenAdminRemoved: TokenAdminRemoved,
-        #[event]
         UpgradeGovernorAdded: UpgradeGovernorAdded,
-        #[event]
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
-        #[event]
         SecurityAdminAdded: SecurityAdminAdded,
-        #[event]
         SecurityAdminRemoved: SecurityAdminRemoved,
-        #[event]
         SecurityAgentAdded: SecurityAgentAdded,
-        #[event]
         SecurityAgentRemoved: SecurityAgentRemoved,
     }
 
@@ -271,7 +237,7 @@ mod TokenBridge {
         message: Span<felt252>,
     }
 
-    // Emitted upon processing of the handle_deploy L1 handler.
+    // Emitted upon processing of the handle_token_deployment L1 handler.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct DeployHandled {
         l1_token: EthAddress,
@@ -338,8 +304,10 @@ mod TokenBridge {
             ref self: ContractState, l1_token: EthAddress, amount_to_withdraw: u256
         ) {
             let remaining_withdrawal_quota = self.get_remaining_withdrawal_quota(:l1_token);
-            // This function should be called only after checking that is_withdrawal_limit_applied
-            // is false.
+            // This function should be called only after checking that `is_withdrawal_limit_applied`
+            // is true. When limit withdrawal is disabled, the `remaining_withdrawal_quota` is
+            // BoundedInt::max(). We rely on that to limit the access only to cases where limit
+            // withdrawal is enabled.
             assert(
                 remaining_withdrawal_quota < BoundedInt::max(), 'withdrawal_limit_applied ERROR'
             );
@@ -1096,7 +1064,7 @@ mod TokenBridge {
     }
 
     #[l1_handler]
-    fn handle_token_enrollment(
+    fn handle_token_deployment(
         ref self: ContractState,
         from_address: felt252,
         l1_token: EthAddress,
@@ -1104,10 +1072,10 @@ mod TokenBridge {
         symbol: felt252,
         decimals: u8
     ) {
-        // Upgraded legacy bridge is not allowed to enroll tokens.
+        // Upgraded legacy bridge is not allowed to deploy tokens.
         let l2_token = self.l2_token.read();
         // l2_token != 0 implies the bridge is an upgraded legacy bridge.
-        assert(l2_token.is_zero(), 'ENROLL_TOKEN_DISALLOWED');
+        assert(l2_token.is_zero(), 'DEPLOY_TOKEN_DISALLOWED');
 
         // Verify deploy originating from the l1 bridge.
         self.only_from_l1_bridge(:from_address);

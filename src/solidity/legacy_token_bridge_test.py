@@ -20,7 +20,7 @@ from solidity.conftest import (
     MAX_UINT,
     HANDLE_TOKEN_DEPOSIT_SELECTOR,
     HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-    HANDLE_TOKEN_ENROLLMENT_SELECTOR,
+    HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
     TOKEN_ADDRESS,
     UpgradeAssistEIC,
     StarknetTokenBridge,
@@ -126,7 +126,7 @@ def legacy_tester_erc20_bridge(
 @pytest.fixture
 def legacy_tester_erc20_new_proxy_bridge(
     governor: EthAccount,
-    legacy_erc20_bridge_impl,
+    legacy_erc20_bridge_impl: EthContract,
     messaging_contract: EthContract,
     mock_erc20_contract: EthContract,
 ) -> EthContract:
@@ -134,6 +134,112 @@ def legacy_tester_erc20_new_proxy_bridge(
     return setup_bridge(
         governor, proxy, legacy_erc20_bridge_impl, mock_erc20_contract.address, messaging_contract
     )
+
+
+def test_erc20_bridge_deposit_cancel_upgrade(
+    governor: EthAccount,
+    mock_erc20_contract: EthContract,
+    legacy_tester_erc20_bridge: EthContract,
+    compatible_erc20_bridge_impl: EthContract,
+    upgrade_eic: EthContract,
+    eth_test_utils: EthTestUtils,
+):
+    """
+    Deposit on legacy L1 erc20-bridge contract, upgrade the contract,
+    and perform cancel deposit flow on the upgraded contract.
+    """
+    _filter = legacy_tester_erc20_bridge.w3_contract.events.LogDeposit.createFilter(
+        fromBlock="latest"
+    )
+    legacy_tester_erc20_bridge.setMaxDeposit(2**255)
+    legacy_tester_erc20_bridge.setMaxTotalBalance(2**255)
+    mock_erc20_contract.approve(legacy_tester_erc20_bridge.w3_contract.address, 2**255)
+
+    # Deposit.
+    legacy_tester_erc20_bridge.deposit(
+        DEPOSIT_AMOUNT, 0xDABADABADA, transact_args={"value": 500000}
+    )
+    ev_dict = dict(_filter.get_new_entries()[0].args)
+    _nonce = ev_dict["nonce"]
+    _abi = load_legacy_contract("Proxy")["abi"]
+    bridge_proxy = legacy_tester_erc20_bridge.replace_abi(_abi)
+    assert bridge_proxy.implementation.call() != ZERO_ADDRESS
+    eic_init_data = chain_hexes_to_bytes([upgrade_eic.address, governor.address, governor.address])
+
+    # Upgrade.
+    add_implementation_and_upgrade(
+        proxy=bridge_proxy,
+        new_impl=compatible_erc20_bridge_impl.address,
+        init_data=eic_init_data,
+        governor=governor,
+    )
+    legacy_tester_erc20_bridge = legacy_tester_erc20_bridge.replace_abi(
+        compatible_erc20_bridge_impl.abi
+    )
+
+    # Send Deposit cancel request.
+    legacy_tester_erc20_bridge.legacyDepositCancelRequest(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+    _before = mock_erc20_contract.balanceOf.call(legacy_tester_erc20_bridge.w3_contract.address)
+    with pytest.raises(EthRevertException, match="MESSAGE_CANCELLATION_NOT_ALLOWED_YET"):
+        legacy_tester_erc20_bridge.legacyDepositReclaim(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+
+    # Advance time for deposit cancel to be reclaimable.
+    eth_test_utils.advance_time(7 * 24 * 3600)
+
+    # Deposit reclaim.
+    legacy_tester_erc20_bridge.legacyDepositReclaim(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+
+    _after = mock_erc20_contract.balanceOf.call(legacy_tester_erc20_bridge.w3_contract.address)
+    assert _before - _after == DEPOSIT_AMOUNT
+
+
+def test_eth_bridge_deposit_cancel_upgrade(
+    governor: EthAccount,
+    legacy_tester_eth_bridge: EthContract,
+    compatible_eth_bridge_impl: EthContract,
+    upgrade_eic: EthContract,
+    eth_test_utils: EthTestUtils,
+):
+    """
+    Deposit on legacy L1 eth-bridge contract, upgrade the contract,
+    and perform cancel deposit flow on the upgraded contract.
+    """
+    _filter = legacy_tester_eth_bridge.w3_contract.events.LogDeposit.createFilter(
+        fromBlock="latest"
+    )
+    legacy_tester_eth_bridge.setMaxDeposit(2**255)
+    legacy_tester_eth_bridge.setMaxTotalBalance(2**255)
+
+    # Deposit.
+    legacy_tester_eth_bridge.deposit(DEPOSIT_AMOUNT, 0xDABADABADA, transact_args={"value": 500000})
+    ev_dict = dict(_filter.get_new_entries()[0].args)
+    _nonce = ev_dict["nonce"]
+    _abi = load_legacy_contract("Proxy")["abi"]
+    bridge_proxy = legacy_tester_eth_bridge.replace_abi(_abi)
+    assert bridge_proxy.implementation.call() != ZERO_ADDRESS
+    eic_init_data = chain_hexes_to_bytes([upgrade_eic.address, governor.address, governor.address])
+
+    # Upgrade.
+    add_implementation_and_upgrade(
+        proxy=bridge_proxy,
+        new_impl=compatible_eth_bridge_impl.address,
+        init_data=eic_init_data,
+        governor=governor,
+    )
+    legacy_tester_eth_bridge = legacy_tester_eth_bridge.replace_abi(compatible_eth_bridge_impl.abi)
+
+    # Send Deposit cancel request.
+    legacy_tester_eth_bridge.legacyDepositCancelRequest(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+    with pytest.raises(EthRevertException, match="MESSAGE_CANCELLATION_NOT_ALLOWED_YET"):
+        legacy_tester_eth_bridge.legacyDepositReclaim(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+
+    eth_test_utils.advance_time(7 * 24 * 3600)
+
+    # Reclaim.
+    _before = eth_test_utils.w3.eth.get_balance(legacy_tester_eth_bridge.address)
+    legacy_tester_eth_bridge.legacyDepositReclaim(DEPOSIT_AMOUNT, 0xDABADABADA, _nonce)
+    _after = eth_test_utils.w3.eth.get_balance(legacy_tester_eth_bridge.address)
+    assert _before - _after == DEPOSIT_AMOUNT
 
 
 def test_erc20_bridge_upgrade_happy_path(

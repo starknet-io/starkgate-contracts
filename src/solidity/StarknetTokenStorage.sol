@@ -6,6 +6,7 @@ import "starkware/starknet/solidity/IStarknetMessaging.sol";
 
 abstract contract StarknetTokenStorage {
     // Named storage slot tags.
+    string internal constant BRIDGED_TOKEN_TAG = "STARKNET_ERC20_TOKEN_BRIDGE_TOKEN_ADDRESS";
     string internal constant L2_BRIDGE_TAG = "STARKNET_TOKEN_BRIDGE_L2_TOKEN_CONTRACT";
     string internal constant MANAGER_TAG = "STARKNET_TOKEN_BRIDGE_MANAGER_SLOT_TAG";
     string internal constant MESSAGING_CONTRACT_TAG = "STARKNET_TOKEN_BRIDGE_MESSAGING_CONTRACT";
