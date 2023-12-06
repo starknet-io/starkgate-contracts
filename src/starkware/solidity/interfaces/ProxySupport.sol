@@ -17,7 +17,7 @@ import "./ContractInitializer.sol";
 abstract contract ProxySupport is Governance, BlockDirectCall, ContractInitializer {
     using Addresses for address;
 
-    // The two function below (isFrozen & initialize) needed to bind to the Proxy.
+    // The two function below (isFrozen & initialize) are needed to bind to the Proxy.
     function isFrozen() external view virtual returns (bool) {
         return false;
     }
@@ -29,7 +29,7 @@ abstract contract ProxySupport is Governance, BlockDirectCall, ContractInitializ
       1. This function cannot be called directly on the deployed contract, but only via
          delegate call.
       2. If an EIC is provided - init is passed onto EIC and the standard init flow is skipped.
-         This true for both first intialization or a later one.
+         This is true for both first initialization or a later one.
       3. The data passed to this function is as follows:
          [sub_contracts addresses, eic address, initData].
 
