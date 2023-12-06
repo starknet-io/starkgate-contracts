@@ -15,7 +15,7 @@ from typing import Dict, List
 
 def filter_interpreter(python: str, entries: List[str]):
     """
-    Filters given list of entries by interpreter prefix.
+    Filters are given a list of entries by interpreter prefix.
     Example:
       filter_interpreter('prefix0', ['a', 'b', 'prefix0:c' ,'prefix1:d']) == \
         ['a', 'b', 'c']
