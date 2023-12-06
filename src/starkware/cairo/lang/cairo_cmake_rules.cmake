@@ -5,7 +5,7 @@ function(cairo_compile_base TARGET_NAME COMPILER_EXE COMPILED_PROGRAM_NAME SOURC
     # Choose a file name for the Cairo dependencies of the compiled file.
     set(COMPILE_DEPENDENCY_FILE
         "${CMAKE_CURRENT_BINARY_DIR}/${TARGET_NAME}_compile_dependencies.cmake")
-    # If this is the first build, create an empty dependency file (this file will be overriden when
+    # If this is the first build, create an empty dependency file (this file will be overridden when
     # cairo-compile is executed with the actual dependencies, using the --cairo_dependencies flag).
     if(NOT EXISTS ${COMPILE_DEPENDENCY_FILE})
       file(WRITE ${COMPILE_DEPENDENCY_FILE} "")
@@ -60,7 +60,7 @@ function(cairo_compile_run TARGET_NAME FILENAME STEPS ARTIFACTS COMPILE_FLAGS RU
 
     # Choose a file name for the python dependencies of cairo-run.
     set(RUN_DEPENDENCY_FILE "${CMAKE_CURRENT_BINARY_DIR}/${FILENAME}_run_dependencies.cmake")
-    # If this is the first build, create an empty dependency file (this file will be overriden when
+    # If this is the first build, create an empty dependency file (this file will be overridden when
     # cairo-run is executed with the actual dependencies, using the --python_dependencies flag).
     if(NOT EXISTS ${RUN_DEPENDENCY_FILE})
       file(WRITE ${RUN_DEPENDENCY_FILE} "")
