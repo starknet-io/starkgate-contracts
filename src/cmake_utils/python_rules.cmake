@@ -1,4 +1,4 @@
-# CACHE INTERNAL makes the variables definitions available in every scope.
+# CACHE INTERNAL makes the definitions of the variables available in every scope.
 set(GEN_PY_LIB_EXECUTABLE ${CMAKE_CURRENT_LIST_DIR}/gen_py_lib.py CACHE INTERNAL "")
 set(GEN_VENV_EXECUTABLE ${CMAKE_CURRENT_LIST_DIR}/gen_venv.py CACHE INTERNAL "")
 set(GEN_PYTHON_EXE_EXECUTABLE ${CMAKE_CURRENT_LIST_DIR}/gen_python_exe.py CACHE INTERNAL "")
@@ -125,7 +125,7 @@ endfunction()
 # Creates a virtual environment target.
 # Usage: python_venv(venv_name PYTHON ${PYTHON_COMMAND} LIBS lib0 lib1 ...)
 # Target properties:
-# VENV_PYTHON: Full path to the vritual environment python executable.
+# VENV_PYTHON: Full path to the virtual environment python executable.
 # STAMP_FILE: when this file is generated, the virtual environment is ready to use.
 function(python_venv VENV_NAME)
   # Parse arguments.
