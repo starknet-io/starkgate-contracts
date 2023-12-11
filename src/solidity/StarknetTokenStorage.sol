@@ -54,10 +54,6 @@ abstract contract StarknetTokenStorage {
         return IStarknetMessaging(NamedStorage.getAddressValue(MESSAGING_CONTRACT_TAG));
     }
 
-    function depositors() internal pure returns (mapping(uint256 => address) storage) {
-        return NamedStorage.uintToAddressMapping(DEPOSITOR_ADDRESSES_TAG);
-    }
-
     // Storage Setters.
     function setManager(address contract_) internal {
         NamedStorage.setAddressValueOnce(MANAGER_TAG, contract_);

@@ -35,6 +35,15 @@ abstract contract LegacyBridge is StarknetTokenBridge, OverrideLegacyProxyGovern
         return NamedStorage.getAddressValue(BRIDGED_TOKEN_TAG);
     }
 
+    function depositors() internal pure returns (mapping(uint256 => address) storage) {
+        return NamedStorage.uintToAddressMapping(DEPOSITOR_ADDRESSES_TAG);
+    }
+
+    modifier onlyDepositor(uint256 nonce) {
+        require(depositors()[nonce] == msg.sender, "ONLY_DEPOSITOR");
+        _;
+    }
+
     /*
       Upgraded legacy bridge does not support token enrollment.
     */

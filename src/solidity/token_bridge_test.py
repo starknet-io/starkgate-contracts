@@ -379,6 +379,7 @@ def test_deposit_message_sent_consumed(
     token_bridge_wrapper: TokenBridgeWrapper, messaging_contract
 ):
     fee = DEFAULT_DEPOSIT_FEE
+    depositor = int(token_bridge_wrapper.default_user.address, 16)
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     token_bridge_wrapper.deposit(amount=HALF_DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=fee)
     token_bridge_wrapper.deposit(
@@ -391,6 +392,7 @@ def test_deposit_message_sent_consumed(
         l1_handler_selector=HANDLE_TOKEN_DEPOSIT_SELECTOR,
         payload=[
             int(token_bridge_wrapper.token_address(), 16),
+            depositor,
             L2_RECIPIENT,
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
@@ -404,10 +406,10 @@ def test_deposit_message_sent_consumed(
         l1_handler_selector=HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
         payload=[
             int(token_bridge_wrapper.token_address(), 16),
+            depositor,
             L2_RECIPIENT,
             HALF_DEPOSIT_AMOUNT % 2**128,
             HALF_DEPOSIT_AMOUNT // 2**128,
-            int(token_bridge_wrapper.default_user.address, 16),
             len(MESSAGE),
             *MESSAGE,
         ],
@@ -731,7 +733,7 @@ def test_hacked_cancel_deposit(
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
 
     # Initiate deposit cancellation from non-depositor.
-    with pytest.raises(EthRevertException, match="ONLY_DEPOSITOR"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_cancel_request(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -750,7 +752,7 @@ def test_hacked_cancel_deposit(
     eth_test_utils.advance_time(MESSAGE_CANCEL_DELAY)
 
     # Only depositor can claim the funds.
-    with pytest.raises(EthRevertException, match="ONLY_DEPOSITOR"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_reclaim(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -775,7 +777,7 @@ def test_hacked_cancel_deposit_with_message(
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
 
     # Initiate deposit cancellation from non-depositor.
-    with pytest.raises(EthRevertException, match="ONLY_DEPOSITOR"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_cancel_request(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -796,7 +798,7 @@ def test_hacked_cancel_deposit_with_message(
     eth_test_utils.advance_time(MESSAGE_CANCEL_DELAY)
 
     # Only depositor can claim the funds.
-    with pytest.raises(EthRevertException, match="ONLY_DEPOSITOR"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_reclaim(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -828,7 +830,7 @@ def test_cancel_deposit(
     )
     _sender = tx_receipt.w3_tx_receipt["from"]
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
-    with pytest.raises(EthRevertException, match="NO_DEPOSIT_TO_CANCEL"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_cancel_request(
             amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, nonce=1
         )
@@ -854,16 +856,24 @@ def test_cancel_deposit(
         "nonce": 0,
     }
 
+    l1l2_msg_payload = [
+        int(token_bridge_wrapper.token_address(), 16),
+        int(token_bridge_wrapper.default_user.address, 16),
+        L2_RECIPIENT,
+        DEPOSIT_AMOUNT,
+        0,
+    ]
+
     assert msg_cancel_req_ev == {
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_TOKEN_DEPOSIT_SELECTOR,
-        "payload": [int(token_bridge_wrapper.token_address(), 16), L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
+        "payload": l1l2_msg_payload,
         "nonce": 0,
     }
 
     # Try to reclaim deposit with different properties (not existing deposit or not cancelled one).
-    with pytest.raises(EthRevertException, match="NO_DEPOSIT_TO_CANCEL"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_reclaim(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -899,7 +909,7 @@ def test_cancel_deposit(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_TOKEN_DEPOSIT_SELECTOR,
-        "payload": [int(token_bridge_wrapper.token_address(), 16), L2_RECIPIENT, DEPOSIT_AMOUNT, 0],
+        "payload": l1l2_msg_payload,
         "nonce": 0,
     }
 
@@ -930,7 +940,7 @@ def test_cancel_deposit_with_message(
     )
     _sender = tx_receipt.w3_tx_receipt["from"]
     assert token_bridge_wrapper.get_bridge_balance() == DEPOSIT_AMOUNT
-    with pytest.raises(EthRevertException, match="NO_DEPOSIT_TO_CANCEL"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_cancel_request(
             amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, message=MESSAGE, nonce=1
         )
@@ -960,24 +970,26 @@ def test_cancel_deposit_with_message(
         "nonce": 0,
     }
 
+    l1l2_msg_payload = [
+        int(token_bridge_wrapper.token_address(), 16),
+        int(token_bridge_wrapper.default_user.address, 16),
+        L2_RECIPIENT,
+        DEPOSIT_AMOUNT,
+        0,
+        len(MESSAGE),
+        *MESSAGE,
+    ]
+
     assert msg_cancel_req_ev == {
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-        "payload": [
-            int(token_bridge_wrapper.token_address(), 16),
-            L2_RECIPIENT,
-            DEPOSIT_AMOUNT,
-            0,
-            int(token_bridge_wrapper.default_user.address, 16),
-            len(MESSAGE),
-            *MESSAGE,
-        ],
+        "payload": l1l2_msg_payload,
         "nonce": 0,
     }
 
     # Try to reclaim deposit with different properties (not existing deposit or not cancelled one).
-    with pytest.raises(EthRevertException, match="NO_DEPOSIT_TO_CANCEL"):
+    with pytest.raises(EthRevertException, match="NO_MESSAGE_TO_CANCEL"):
         token_bridge_wrapper.deposit_reclaim(
             amount=DEPOSIT_AMOUNT,
             l2_recipient=L2_RECIPIENT,
@@ -1016,15 +1028,7 @@ def test_cancel_deposit_with_message(
         "fromAddress": bridge.address,
         "toAddress": L2_TOKEN_CONTRACT,
         "selector": HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-        "payload": [
-            int(token_bridge_wrapper.token_address(), 16),
-            L2_RECIPIENT,
-            DEPOSIT_AMOUNT,
-            0,
-            int(token_bridge_wrapper.default_user.address, 16),
-            len(MESSAGE),
-            *MESSAGE,
-        ],
+        "payload": l1l2_msg_payload,
         "nonce": 0,
     }
 

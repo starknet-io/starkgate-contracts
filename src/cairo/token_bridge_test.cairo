@@ -83,9 +83,9 @@ mod token_bridge_test {
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             :l1_token,
+            :depositor,
             :l2_recipient,
             amount: amount_to_deposit,
-            :depositor,
             :message
         );
     }
@@ -270,14 +270,19 @@ mod token_bridge_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         // Initiate withdraw (set the caller to be the initial_owner).
@@ -302,12 +307,18 @@ mod token_bridge_test {
         let l1_recipient = EthAddress { address: 0 };
 
         let token_bridge_address = deploy_token_bridge();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         // Should panic because the recipient is invalid.
@@ -327,6 +338,8 @@ mod token_bridge_test {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
         let token_bridge_address = deploy_token_bridge();
         let token_bridge = get_token_bridge(:token_bridge_address);
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
+
         // The token does not exist; hence, there is no withdrawal limit applied. Therefore, the
         // quota is max.
         assert(
@@ -338,7 +351,12 @@ mod token_bridge_test {
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
         // By default, the withdrawal limit is off; hence, the quota is max.
         assert(
@@ -389,12 +407,18 @@ mod token_bridge_test {
 
         let token_bridge_address = deploy_token_bridge();
         let token_bridge = get_token_bridge(:token_bridge_address);
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
         let l2_token = token_bridge.get_l2_token(:l1_token);
         starknet::testing::set_contract_address(address: token_bridge_address);
@@ -644,12 +668,18 @@ mod token_bridge_test {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
 
         let token_bridge_address = deploy_token_bridge();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         // Initiate withdraw.
@@ -665,12 +695,18 @@ mod token_bridge_test {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
 
         let token_bridge_address = deploy_token_bridge();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         // Initiate withdraw.
@@ -685,6 +721,7 @@ mod token_bridge_test {
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
 
         let token_bridge_address = deploy_token_bridge();
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
@@ -693,6 +730,7 @@ mod token_bridge_test {
             :token_bridge_address,
             :l1_bridge_address,
             :l1_token,
+            :depositor,
             :l2_recipient,
             amount_to_deposit: first_amount
         );
@@ -709,6 +747,7 @@ mod token_bridge_test {
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             :l1_token,
+            :depositor,
             :l2_recipient,
             amount: second_amount
         );
@@ -854,6 +893,7 @@ mod token_bridge_test {
 
         // Set an arbitrary l1 bridge address.
         let l1_bridge_address = EthAddress { address: DEFAULT_L1_BRIDGE_ETH_ADDRESS };
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
 
         // Deploy token contract.
         let initial_owner = initial_owner();
@@ -879,6 +919,7 @@ mod token_bridge_test {
             ref token_bridge_state,
             from_address: l1_not_bridge_address.into(),
             l1_token: l1_bridge_address,
+            :depositor,
             l2_recipient: initial_owner,
             amount: default_amount()
         );

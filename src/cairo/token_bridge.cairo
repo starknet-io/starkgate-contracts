@@ -1013,6 +1013,7 @@ mod TokenBridge {
         ref self: ContractState,
         from_address: felt252,
         l1_token: EthAddress,
+        depositor: EthAddress,
         l2_recipient: ContractAddress,
         amount: u256,
     ) {
@@ -1029,9 +1030,9 @@ mod TokenBridge {
         ref self: ContractState,
         from_address: felt252,
         l1_token: EthAddress,
+        depositor: EthAddress,
         l2_recipient: ContractAddress,
         amount: u256,
-        depositor: EthAddress,
         message: Span<felt252>,
     ) {
         // Verify deposit originating from the l1 bridge.

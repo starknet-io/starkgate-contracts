@@ -24,6 +24,7 @@ mod token_bridge_admin_test {
         ITokenBridgeAdminDispatcher, ITokenBridgeAdminDispatcherTrait
     };
 
+    const DEFAULT_DEPOSITOR_ETH_ADDRESS: felt252 = 7;
     // TODO change the name of deploy_and_prepare.
 
     // Deploys the token bridge and sets the caller as the App Governer (and as App Role Admin).
@@ -189,14 +190,19 @@ mod token_bridge_admin_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw_with_limits_one_withdrawal() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -218,14 +224,19 @@ mod token_bridge_admin_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw_with_limits_two_withdrawals() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -258,14 +269,19 @@ mod token_bridge_admin_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw_with_and_without_limits() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -312,14 +328,19 @@ mod token_bridge_admin_test {
     #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
     fn test_failed_initiate_token_withdraw_with_and_without_limits() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -357,7 +378,7 @@ mod token_bridge_admin_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw_with_limits_different_days() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
         set_caller_as_app_role_admin_app_governor(:token_bridge_address);
         let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
@@ -367,7 +388,12 @@ mod token_bridge_admin_test {
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -406,14 +432,19 @@ mod token_bridge_admin_test {
     #[available_gas(30000000)]
     fn test_successful_initiate_token_withdraw_with_limits_same_day_differnet_time() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -453,14 +484,19 @@ mod token_bridge_admin_test {
     #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
     fn test_failed_initiate_token_withdraw_limit_exceeded_one_withdrawal() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -481,14 +517,19 @@ mod token_bridge_admin_test {
     #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
     fn test_failed_initiate_token_withdraw_limit_exceeded_two_withdrawals() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
@@ -517,14 +558,19 @@ mod token_bridge_admin_test {
     #[should_panic(expected: ('LIMIT_EXCEEDED', 'ENTRYPOINT_FAILED',))]
     fn test_failed_initiate_token_withdraw_limit_exceeded_same_day_different_time() {
         let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
-
+        let depositor = EthAddress { address: DEFAULT_DEPOSITOR_ETH_ADDRESS };
         let token_bridge_address = deploy_token_bridge();
 
         // Deploy a new token and deposit funds to this token.
         let l2_recipient = initial_owner();
         let amount_to_deposit = default_amount();
         deploy_new_token_and_deposit(
-            :token_bridge_address, :l1_bridge_address, :l1_token, :l2_recipient, :amount_to_deposit
+            :token_bridge_address,
+            :l1_bridge_address,
+            :l1_token,
+            :depositor,
+            :l2_recipient,
+            :amount_to_deposit
         );
 
         // Limit the withdrawal amount.

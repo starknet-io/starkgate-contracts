@@ -86,9 +86,11 @@ contract StarknetTokenBridge is
     );
     event WithdrawalLimitEnabled(address indexed sender, address indexed token);
     event WithdrawalLimitDisabled(address indexed sender, address indexed token);
+    uint256 constant N_DEPOSIT_PAYLOAD_ARGS = 5;
+    uint256 constant DEPOSIT_MESSAGE_FIXED_SIZE = 1;
 
     function identify() external pure virtual returns (string memory) {
-        return "StarkWare_StarknetTokenBridge_2.0_2";
+        return "StarkWare_StarknetTokenBridge_2.0_3";
     }
 
     function validateInitData(bytes calldata data) internal view virtual override {
@@ -120,13 +122,6 @@ contract StarknetTokenBridge is
 
     function numOfSubContracts() internal pure override returns (uint256) {
         return 0;
-    }
-
-    modifier onlyDepositor(uint256 nonce) {
-        address depositor_ = depositors()[nonce];
-        require(depositor_ != address(0x0), "NO_DEPOSIT_TO_CANCEL");
-        require(depositor_ == msg.sender, "ONLY_DEPOSITOR");
-        _;
     }
 
     modifier onlyManager() {
@@ -390,9 +385,6 @@ contract StarknetTokenBridge is
         return payload;
     }
 
-    uint256 constant ARGUMENT_SIZE = 4;
-    uint256 constant MESSAGE_METADATA_SIZE = 2;
-
     function depositMessagePayload(
         address token,
         uint256 amount,
@@ -401,15 +393,15 @@ contract StarknetTokenBridge is
         uint256[] memory message
     ) private view returns (uint256[] memory) {
         uint256 MESSAGE_OFFSET = withMessage
-            ? ARGUMENT_SIZE + MESSAGE_METADATA_SIZE
-            : ARGUMENT_SIZE;
+            ? N_DEPOSIT_PAYLOAD_ARGS + DEPOSIT_MESSAGE_FIXED_SIZE
+            : N_DEPOSIT_PAYLOAD_ARGS;
         uint256[] memory payload = new uint256[](MESSAGE_OFFSET + message.length);
         payload[0] = uint256(uint160(token));
-        payload[1] = l2Recipient;
-        payload[2] = amount & (UINT256_PART_SIZE - 1);
-        payload[3] = amount >> UINT256_PART_SIZE_BITS;
+        payload[1] = uint256(uint160(msg.sender));
+        payload[2] = l2Recipient;
+        payload[3] = amount & (UINT256_PART_SIZE - 1);
+        payload[4] = amount >> UINT256_PART_SIZE_BITS;
         if (withMessage) {
-            payload[MESSAGE_OFFSET - 2] = uint256(uint160(msg.sender));
             payload[MESSAGE_OFFSET - 1] = message.length;
             for (uint256 i = 0; i < message.length; i++) {
                 require(message[i].isFelt(), "INVALID_MESSAGE_DATA");
@@ -465,8 +457,6 @@ contract StarknetTokenBridge is
             selector,
             depositMessagePayload(token, amount, l2Recipient, isWithMsg, message)
         );
-        require(depositors()[nonce] == address(0x0), "DEPOSIT_ALREADY_REGISTERED");
-        depositors()[nonce] = msg.sender;
 
         // The function exclusively supports two specific selectors, and any attempt to use an unknown
         // selector will result in a transaction failure.
@@ -527,7 +517,7 @@ contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external {
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
             HANDLE_TOKEN_DEPOSIT_SELECTOR,
@@ -547,7 +537,7 @@ contract StarknetTokenBridge is
         uint256 l2Recipient,
         uint256[] calldata message,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external {
         messagingContract().startL1ToL2MessageCancellation(
             l2TokenBridge(),
             HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
@@ -577,7 +567,7 @@ contract StarknetTokenBridge is
         uint256 l2Recipient,
         uint256[] calldata message,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external {
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
             HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
@@ -600,7 +590,7 @@ contract StarknetTokenBridge is
         uint256 amount,
         uint256 l2Recipient,
         uint256 nonce
-    ) external onlyDepositor(nonce) {
+    ) external {
         messagingContract().cancelL1ToL2Message(
             l2TokenBridge(),
             HANDLE_TOKEN_DEPOSIT_SELECTOR,

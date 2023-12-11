@@ -546,6 +546,7 @@ mod test_utils {
         token_bridge_address: ContractAddress,
         l1_bridge_address: EthAddress,
         l1_token: EthAddress,
+        depositor: EthAddress,
         l2_recipient: ContractAddress,
         amount_to_deposit: u256
     ) {
@@ -556,6 +557,7 @@ mod test_utils {
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             :l1_token,
+            :depositor,
             :l2_recipient,
             amount: amount_to_deposit
         );
