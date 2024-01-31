@@ -14,9 +14,8 @@ mod token_bridge_admin_test {
         set_contract_address_as_not_caller, pop_and_deserialize_last_event, get_token_bridge,
         get_token_bridge_admin, set_caller_as_app_role_admin_app_governor, deploy_token_bridge,
         stock_erc20_class_hash, get_default_l1_addresses, withdraw_and_validate,
-        set_caller_as_security_agent, set_caller_as_security_admin, _get_daily_withdrawal_limit,
-        enable_withdrawal_limit, disable_withdrawal_limit, default_amount,
-        deploy_new_token_and_deposit,
+        _get_daily_withdrawal_limit, enable_withdrawal_limit, disable_withdrawal_limit,
+        default_amount, deploy_new_token_and_deposit,
     };
 
     use super::super::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
@@ -608,7 +607,7 @@ mod token_bridge_admin_test {
     #[test]
     #[should_panic(expected: ('ONLY_SECURITY_AGENT', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_apply_withdrawal_limit_not_app_governor() {
+    fn test_enable_withdrawal_limit_not_security_agent() {
         let token_bridge_address = deploy_token_bridge();
         let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
 
@@ -618,9 +617,24 @@ mod token_bridge_admin_test {
     }
 
     #[test]
+    #[should_panic(expected: ('ONLY_SECURITY_ADMIN', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_disable_withdrawal_limit_not_security_admin() {
+        let token_bridge_address = deploy_token_bridge();
+        let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+
+        // Use an arbitrary l1 token address.
+        let (_, l1_token, _) = get_default_l1_addresses();
+
+        // Change the contract address since the caller is the security admin.
+        set_contract_address_as_not_caller();
+        token_bridge_admin.disable_withdrawal_limit(:l1_token);
+    }
+
+    #[test]
     #[should_panic(expected: ('TOKEN_NOT_IN_BRIDGE', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_apply_withdrawal_limit_token_not_in_bridge() {
+    fn test_enable_withdrawal_limit_token_not_in_bridge() {
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
         let token_bridge_admin = deploy_and_prepare();
         let token_bridge_address = token_bridge_admin.contract_address;
@@ -628,5 +642,18 @@ mod token_bridge_admin_test {
         // Use an arbitrary l1 token address (which was not deployed).
         let (_, l1_token, _) = get_default_l1_addresses();
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
+    }
+
+    #[test]
+    #[should_panic(expected: ('TOKEN_NOT_IN_BRIDGE', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_disable_withdrawal_limit_token_not_in_bridge() {
+        // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
+        let token_bridge_admin = deploy_and_prepare();
+        let token_bridge_address = token_bridge_admin.contract_address;
+
+        // Use an arbitrary l1 token address (which was not deployed).
+        let (_, l1_token, _) = get_default_l1_addresses();
+        disable_withdrawal_limit(:token_bridge_address, :l1_token);
     }
 }

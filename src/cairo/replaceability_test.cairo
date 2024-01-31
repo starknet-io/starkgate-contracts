@@ -47,7 +47,8 @@ mod replaceability_test {
         caller, not_caller, initial_owner, set_contract_address_as_caller,
         set_contract_address_as_not_caller, pop_and_deserialize_last_event, pop_last_k_events,
         deserialize_event, get_erc20_token, get_replaceable, set_caller_as_upgrade_governor,
-        simple_deploy_l2_token, deploy_token_bridge, DEFAULT_UPGRADE_DELAY
+        simple_deploy_token, simple_deploy_lockable_token, deploy_token_bridge,
+        DEFAULT_UPGRADE_DELAY
     };
     use super::super::replaceability_interface::{
         EICData, ImplementationData, IReplaceable, IReplaceableDispatcher,
@@ -120,7 +121,13 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_get_upgrade_delay() {
-        _get_upgrade_delay(simple_deploy_l2_token());
+        _get_upgrade_delay(simple_deploy_token());
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_get_upgrade_delay() {
+        _get_upgrade_delay(simple_deploy_lockable_token());
     }
 
     fn _get_upgrade_delay(replaceable_address: ContractAddress) {
@@ -141,7 +148,14 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_add_new_implementation() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _add_new_implementation(:replaceable_address);
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_add_new_implementation() {
+        let replaceable_address = simple_deploy_lockable_token();
         _add_new_implementation(:replaceable_address);
     }
 
@@ -187,7 +201,16 @@ mod replaceability_test {
     #[available_gas(30000000)]
     fn test_replaceability_erc20_add_new_implementation_not_upgrade_governor() {
         // Deploy the ERC20 token and continue with the test.
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _add_new_impl_not_upg_gov(:replaceable_address);
+    }
+
+    #[test]
+    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_add_new_implementation_not_upgrade_governor() {
+        // Deploy the Lockable token and continue with the test.
+        let replaceable_address = simple_deploy_lockable_token();
         _add_new_impl_not_upg_gov(:replaceable_address);
     }
 
@@ -213,7 +236,14 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_remove_implementation() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _remove_implementation(:replaceable_address);
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_remove_implementation() {
+        let replaceable_address = simple_deploy_lockable_token();
         _remove_implementation(:replaceable_address);
     }
 
@@ -273,7 +303,15 @@ mod replaceability_test {
     #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_remove_implementation_not_upgrade_governor() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _remove_implementation_not_upgrade_governor(:replaceable_address);
+    }
+
+    #[test]
+    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_remove_implementation_not_upgrade_governor() {
+        let replaceable_address = simple_deploy_lockable_token();
         _remove_implementation_not_upgrade_governor(:replaceable_address);
     }
 
@@ -297,7 +335,14 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_replace_to_with_eic() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _replace_to_with_eic(:replaceable_address);
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_replace_to_with_eic() {
+        let replaceable_address = simple_deploy_lockable_token();
         _replace_to_with_eic(:replaceable_address);
     }
 
@@ -339,7 +384,14 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_replace_to_nonfinal() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _replace_to_nonfinal(:replaceable_address);
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_replace_to_nonfinal() {
+        let replaceable_address = simple_deploy_lockable_token();
         _replace_to_nonfinal(:replaceable_address);
     }
 
@@ -386,7 +438,15 @@ mod replaceability_test {
     #[should_panic(expected: ('UNKNOWN_IMPLEMENTATION', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_remove_impl_on_replace() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _replace_remove_impl_on_replace(:replaceable_address);
+    }
+
+    #[test]
+    #[should_panic(expected: ('UNKNOWN_IMPLEMENTATION', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_remove_impl_on_replace() {
+        let replaceable_address = simple_deploy_lockable_token();
         _replace_remove_impl_on_replace(:replaceable_address);
     }
 
@@ -447,7 +507,15 @@ mod replaceability_test {
     #[available_gas(30000000)]
     fn test_replaceability_erc20_expire_impl() {
         // Tests that when impl class-hash cannot be replaced to after expiration.
-        _expire_impl(replaceable_address: simple_deploy_l2_token());
+        _expire_impl(replaceable_address: simple_deploy_token());
+    }
+
+    #[test]
+    #[should_panic(expected: ('IMPLEMENTATION_EXPIRED', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_expire_impl() {
+        // Tests that when impl class-hash cannot be replaced to after expiration.
+        _expire_impl(replaceable_address: simple_deploy_lockable_token());
     }
 
     fn _expire_impl(replaceable_address: ContractAddress) {
@@ -489,7 +557,13 @@ mod replaceability_test {
     #[test]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_replace_to_final() {
-        _replace_to_final(replaceable_address: deploy_token_bridge());
+        _replace_to_final(replaceable_address: simple_deploy_token());
+    }
+
+    #[test]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_replace_to_final() {
+        _replace_to_final(replaceable_address: simple_deploy_lockable_token());
     }
 
     fn _replace_to_final(replaceable_address: ContractAddress) {
@@ -551,7 +625,14 @@ mod replaceability_test {
     #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_replace_to_not_upgrade_governor() {
-        _replace_to_not_upgrade_governor(replaceable_address: simple_deploy_l2_token());
+        _replace_to_not_upgrade_governor(replaceable_address: simple_deploy_token());
+    }
+
+    #[test]
+    #[should_panic(expected: ('ONLY_UPGRADE_GOVERNOR', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_replace_to_not_upgrade_governor() {
+        _replace_to_not_upgrade_governor(replaceable_address: simple_deploy_lockable_token());
     }
 
     fn _replace_to_not_upgrade_governor(replaceable_address: ContractAddress) {
@@ -575,7 +656,15 @@ mod replaceability_test {
     #[should_panic(expected: ('FINALIZED', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_replace_to_already_final() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _replace_to_already_final(:replaceable_address);
+    }
+
+    #[test]
+    #[should_panic(expected: ('FINALIZED', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_replace_to_already_final() {
+        let replaceable_address = simple_deploy_lockable_token();
         _replace_to_already_final(:replaceable_address);
     }
 
@@ -610,7 +699,15 @@ mod replaceability_test {
     #[should_panic(expected: ('UNKNOWN_IMPLEMENTATION', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
     fn test_replaceability_erc20_unknown_implementation() {
-        let replaceable_address = simple_deploy_l2_token();
+        let replaceable_address = simple_deploy_token();
+        _replace_unknown_implementation(:replaceable_address);
+    }
+
+    #[test]
+    #[should_panic(expected: ('UNKNOWN_IMPLEMENTATION', 'ENTRYPOINT_FAILED',))]
+    #[available_gas(30000000)]
+    fn test_replaceability_lockable_unknown_implementation() {
+        let replaceable_address = simple_deploy_lockable_token();
         _replace_unknown_implementation(:replaceable_address);
     }
 

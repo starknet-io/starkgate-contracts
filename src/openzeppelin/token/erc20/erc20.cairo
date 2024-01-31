@@ -35,9 +35,9 @@ mod ERC20 {
     /// Emitted when tokens are moved from address `from` to address `to`.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct Transfer {
-        #[key]
+        // #[key] - Not indexed, to maintain backward compatibility.
         from: ContractAddress,
-        #[key]
+        // #[key] - Not indexed, to maintain backward compatibility.
         to: ContractAddress,
         value: u256
     }
@@ -46,9 +46,9 @@ mod ERC20 {
     /// to [approve](approve). `value` is the new allowance.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct Approval {
-        #[key]
+        // #[key] - Not indexed, to maintain backward compatibility.
         owner: ContractAddress,
-        #[key]
+        // #[key] - Not indexed, to maintain backward compatibility.
         spender: ContractAddress,
         value: u256
     }

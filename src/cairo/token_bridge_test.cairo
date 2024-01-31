@@ -42,7 +42,7 @@ mod token_bridge_test {
         get_erc20_token, deploy_l2_token, pop_and_deserialize_last_event, pop_last_k_events,
         deserialize_event, arbitrary_event, assert_role_granted_event, assert_role_revoked_event,
         validate_empty_event_queue, get_roles, get_access_control, deploy_token_bridge,
-        stock_erc20_class_hash, votes_erc20_class_hash, deploy_stub_msg_receiver,
+        stock_erc20_class_hash, erc20_votes_lock_class_hash, deploy_stub_msg_receiver,
         withdraw_and_validate, deploy_upgraded_legacy_bridge, get_token_bridge,
         get_token_bridge_admin, _get_daily_withdrawal_limit, disable_withdrawal_limit,
         enable_withdrawal_limit, set_caller_as_app_role_admin_app_governor, default_amount,
@@ -445,14 +445,6 @@ mod token_bridge_test {
         _handle_token_deployment(:erc20_class_hash);
     }
 
-    #[test]
-    #[available_gas(30000000)]
-    fn test_successful_votes_erc20_handle_token_deployment() {
-        // Set Votes ERC20 class hash.
-        let erc20_class_hash = votes_erc20_class_hash();
-        _handle_token_deployment(:erc20_class_hash);
-    }
-
     fn _handle_token_deployment(erc20_class_hash: ClassHash) {
         let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
         // Deploy the token bridge and set the caller as the app governer (and as App Role Admin).
@@ -563,12 +555,16 @@ mod token_bridge_test {
 
         token_bridge_admin.set_l2_token_governance(caller());
         let t1_roles = get_roles(
-            internal_deploy_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token1)
+            contract_address: internal_deploy_token(
+                :token_bridge_address, :l1_bridge_address, l1_token: l1_token1
+            )
         );
 
         token_bridge_admin.set_l2_token_governance(not_caller());
         let t2_roles = get_roles(
-            internal_deploy_token(:token_bridge_address, :l1_bridge_address, l1_token: l1_token2)
+            contract_address: internal_deploy_token(
+                :token_bridge_address, :l1_bridge_address, l1_token: l1_token2
+            )
         );
 
         assert(t1_roles.is_governance_admin(caller()), 'l2_token1 Role not granted');

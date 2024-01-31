@@ -9,40 +9,23 @@ mod permissioned_token_test {
     use integer::BoundedInt;
     use serde::Serde;
     use starknet::{contract_address_const, ContractAddress, syscalls::deploy_syscall};
+    use src::err_msg::AccessErrors as AccessErrors;
 
     use super::super::mintable_token_interface::{
         IMintableTokenDispatcher, IMintableTokenDispatcherTrait
     };
     use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use super::super::test_utils::test_utils::{
-        get_erc20_token, deploy_l2_votes_token, deploy_l2_token, get_mintable_token,
-        get_l2_token_deployment_calldata
+        get_erc20_token, deploy_l2_token, get_mintable_token, get_l2_token_deployment_calldata
     };
 
-    use openzeppelin::token::erc20::presets::erc20votes::ERC20VotesPreset;
+    use openzeppelin::token::erc20::presets::erc20_votes_lock::ERC20VotesLock;
     use openzeppelin::token::erc20_v070::erc20::ERC20;
 
     fn _l2_erc20(initial_supply: u256) -> ContractAddress {
         let initial_owner = starknet::contract_address_const::<10>();
         let permitted_minter = starknet::contract_address_const::<20>();
         deploy_l2_token(:initial_owner, :permitted_minter, :initial_supply)
-    }
-
-    fn _l2_votes_erc20(initial_supply: u256) -> ContractAddress {
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-        deploy_l2_votes_token(:initial_owner, :permitted_minter, :initial_supply)
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_votes_erc20_successful_permitted_mint() {
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-        let l2_token = deploy_l2_votes_token(
-            :initial_owner, :permitted_minter, initial_supply: 1000
-        );
-        _successful_permitted_mint(:l2_token, :initial_owner, :permitted_minter);
     }
 
     #[test]
@@ -88,21 +71,6 @@ mod permissioned_token_test {
     #[test]
     #[should_panic(expected: ('u256_add Overflow', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_votes_erc20_overflowing_permitted_mint() {
-        // Setup.
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-
-        // Deploy the l2 token contract.
-        let l2_token = deploy_l2_votes_token(
-            :initial_owner, :permitted_minter, initial_supply: BoundedInt::max()
-        );
-        _overflowing_permitted_mint(:l2_token, :initial_owner, :permitted_minter);
-    }
-
-    #[test]
-    #[should_panic(expected: ('u256_add Overflow', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
     fn test_erc20_overflowing_permitted_mint() {
         // Setup.
         let initial_owner = starknet::contract_address_const::<10>();
@@ -123,14 +91,6 @@ mod permissioned_token_test {
         starknet::testing::set_contract_address(permitted_minter);
         let mint_recipient = starknet::contract_address_const::<1337>();
         mintable_token.permissioned_mint(account: mint_recipient, amount: 1);
-    }
-
-    #[test]
-    #[should_panic(expected: ('MINTER_ONLY', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_votes_erc20_unpermitted_permitted_mint() {
-        let l2_token = _l2_votes_erc20(initial_supply: 1000);
-        _unpermitted_permitted_mint(:l2_token);
     }
 
     #[test]
@@ -170,19 +130,10 @@ mod permissioned_token_test {
             .unwrap_err()
             .span();
         assert(error_message.len() == 2, 'UNEXPECTED_ERROR_LEN_MISMATCH');
-        assert(error_message.at(0) == @'INVALID_MINTER_ADDRESS', 'INVALID_MINTER_ADDRESS_ERROR');
-        assert(error_message.at(1) == @'CONSTRUCTOR_FAILED', 'CONSTRUCTOR_ERROR_MISMATCH');
-    }
-
-    #[test]
-    #[available_gas(30000000)]
-    fn test_votes_erc20_successful_permitted_burn() {
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-        let l2_token = deploy_l2_votes_token(
-            :initial_owner, :permitted_minter, initial_supply: 1000
+        assert(
+            error_message.at(0) == @AccessErrors::INVALID_MINTER, 'INVALID_MINTER_ADDRESS_ERROR'
         );
-        _successful_permitted_burn(:l2_token, :initial_owner, :permitted_minter);
+        assert(error_message.at(1) == @'CONSTRUCTOR_FAILED', 'CONSTRUCTOR_ERROR_MISMATCH');
     }
 
     #[test]
@@ -219,21 +170,6 @@ mod permissioned_token_test {
     #[test]
     #[should_panic(expected: ('u256_sub Overflow', 'ENTRYPOINT_FAILED',))]
     #[available_gas(30000000)]
-    fn test_votes_erc20_exceeding_amount_permitted_burn() {
-        // Setup.
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-
-        // Deploy the l2 token contract.
-        let l2_token = deploy_l2_votes_token(
-            :initial_owner, :permitted_minter, initial_supply: 1000
-        );
-        _exceeding_amount_permitted_burn(:l2_token, :initial_owner, :permitted_minter);
-    }
-
-    #[test]
-    #[should_panic(expected: ('u256_sub Overflow', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
     fn test_erc20_exceeding_amount_permitted_burn() {
         // Setup.
         let initial_owner = starknet::contract_address_const::<10>();
@@ -252,21 +188,6 @@ mod permissioned_token_test {
         // Permissioned burn of an exceeding amount.
         starknet::testing::set_contract_address(permitted_minter);
         mintable_token.permissioned_burn(account: initial_owner, amount: 1001);
-    }
-
-    #[test]
-    #[should_panic(expected: ('MINTER_ONLY', 'ENTRYPOINT_FAILED',))]
-    #[available_gas(30000000)]
-    fn test_votes_erc20_unpermitted_permitted_burn() {
-        // Setup.
-        let initial_owner = starknet::contract_address_const::<10>();
-        let permitted_minter = starknet::contract_address_const::<20>();
-
-        // Deploy the l2 token contract.
-        let l2_token = deploy_l2_votes_token(
-            :initial_owner, :permitted_minter, initial_supply: 1000
-        );
-        _unpermitted_permitted_burn(:l2_token, :initial_owner, :permitted_minter);
     }
 
     #[test]

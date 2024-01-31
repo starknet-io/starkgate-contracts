@@ -3,7 +3,7 @@
 #[starknet::contract]
 mod Update712VarsEIC {
     use super::super::replaceability_interface::IEICInitializable;
-    use openzeppelin::token::erc20::presets::erc20votes::ERC20VotesPreset::{
+    use openzeppelin::token::erc20::presets::erc20_votes_lock::ERC20VotesLock::{
         DAPP_NAME, DAPP_VERSION
     };
 

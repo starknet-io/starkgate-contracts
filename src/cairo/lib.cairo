@@ -1,9 +1,13 @@
+// STRK Token (ERC20Lockable).
+mod strk;
+
 // Interfaces.
 mod access_control_interface;
 mod token_bridge_admin_interface;
 mod token_bridge_interface;
 mod erc20_interface;
 mod mintable_token_interface;
+mod mintable_lock_interface;
 mod replaceability_interface;
 mod roles_interface;
 mod receiver_interface;

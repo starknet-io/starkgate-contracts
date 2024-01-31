@@ -10,7 +10,7 @@ mod legacy_eic_test {
     use serde::Serde;
     use starknet::class_hash::{ClassHash, class_hash_const};
     use starknet::{ContractAddress, EthAddress, EthAddressZeroable, syscalls::deploy_syscall};
-    use openzeppelin::token::erc20::presets::erc20votes::ERC20VotesPreset::{
+    use openzeppelin::token::erc20::presets::erc20_votes_lock::ERC20VotesLock::{
         DAPP_NAME, DAPP_VERSION
     };
 
@@ -24,7 +24,7 @@ mod legacy_eic_test {
     use src::roles_interface::{IRolesDispatcher, IRolesDispatcherTrait};
     use src::test_utils::test_utils::{
         caller, get_roles, get_token_bridge, set_contract_address_as_caller, get_replaceable,
-        simple_deploy_l2_token, DEFAULT_UPGRADE_DELAY
+        simple_deploy_token, DEFAULT_UPGRADE_DELAY
     };
     use src::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
     use src::token_bridge::TokenBridge;
@@ -181,8 +181,8 @@ mod legacy_eic_test {
     #[test]
     #[available_gas(30000000)]
     fn test_happy_path() {
-        let l2_token = simple_deploy_l2_token();
-        let tester_address = deploy_legacy_tester(l2_token);
+        let l2_token = simple_deploy_token();
+        let tester_address = deploy_legacy_tester(:l2_token);
         let impl_data = token_bridge_w_eic_implementation_data(
             l1_token: L1_TOKEN_ADDRESS(), :l2_token,
         );
@@ -191,7 +191,7 @@ mod legacy_eic_test {
         );
 
         let token_bridge = get_token_bridge(tester_address);
-        let l1_token = token_bridge.get_l1_token(l2_token);
+        let l1_token = token_bridge.get_l1_token(:l2_token);
         let l2_token_actual = token_bridge.get_l2_token(L1_TOKEN_ADDRESS());
         assert(L1_TOKEN_ADDRESS() == l1_token, 'L1_ZEROED');
         assert(l2_token == l2_token_actual, 'L2_ZEROED');
@@ -206,7 +206,7 @@ mod legacy_eic_test {
         add_impl_and_replace_to(replaceable_address: tester1, :implementation_data);
 
         // Tester 1 roles are not initialzied, and gov admin not set.
-        let roles1 = get_roles(tester1);
+        let roles1 = get_roles(contract_address: tester1);
         assert(!roles1.is_governance_admin(caller()), 'Roles should not be initialized');
         assert(!roles1.is_upgrade_governor(caller()), 'Roles should not be initialized');
         assert(!roles1.is_security_admin(caller()), 'Roles should not be initialized');
@@ -217,7 +217,7 @@ mod legacy_eic_test {
         add_impl_and_replace_to(replaceable_address: tester2, :implementation_data);
 
         // Tester 2 roles are initialized and gov admin assigned.
-        let roles = get_roles(tester2);
+        let roles = get_roles(contract_address: tester2);
         assert(roles.is_governance_admin(caller()), 'Roles should be initialized');
         assert(roles.is_upgrade_governor(caller()), 'Roles should be initialized');
         assert(roles.is_security_admin(caller()), 'Roles should be initialized');
@@ -322,7 +322,7 @@ mod legacy_eic_test {
     #[available_gas(30000000)]
     fn test_upgrade_an_upgraded() {
         // Test failing to upgrade twice.
-        let l2_token = simple_deploy_l2_token();
+        let l2_token = simple_deploy_token();
         let tester_address = deploy_legacy_tester(l2_token);
         let impl_data = token_bridge_w_eic_implementation_data(
             l1_token: L1_TOKEN_ADDRESS(), :l2_token,

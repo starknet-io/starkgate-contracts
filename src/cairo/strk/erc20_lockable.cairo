@@ -7,8 +7,9 @@
 //! The library is agnostic regarding how tokens are created; however,
 //! the preset implementation sets the initial supply in the constructor.
 //! A derived contract can use [_mint](_mint) to create a different supply mechanism.
+
 #[starknet::contract]
-mod ERC20 {
+mod ERC20Lockable {
     use src::err_msg::AccessErrors as AccessErrors;
     use src::err_msg::ERC20Errors as ERC20Errors;
     use src::err_msg::ReplaceErrors as ReplaceErrors;
@@ -16,7 +17,14 @@ mod ERC20 {
     use integer::BoundedInt;
     use openzeppelin::token::erc20::interface::IERC20;
     use openzeppelin::token::erc20::interface::IERC20CamelOnly;
+    use src::strk::eip712helper::{
+        calc_domain_hash, lock_and_delegate_message_hash, validate_signature
+    };
     use src::mintable_token_interface::{IMintableToken, IMintableTokenCamel};
+    use src::mintable_lock_interface::{
+        ILockAndDelegate, IMintableLock, IMintableLockDispatcher, IMintableLockDispatcherTrait,
+        ILockingContract
+    };
     use src::access_control_interface::{
         IAccessControl, RoleId, RoleAdminChanged, RoleGranted, RoleRevoked
     };
@@ -44,7 +52,14 @@ mod ERC20 {
         ERC20_total_supply: u256,
         ERC20_balances: LegacyMap<ContractAddress, u256>,
         ERC20_allowances: LegacyMap<(ContractAddress, ContractAddress), u256>,
-        // --- MintableToken ---
+        // --- Lock And Delegate ---
+        // Address of the contract that is used to lock & delegate on.
+        locking_contract: ContractAddress,
+        // Hashes of Lock & Delegate called by signature, to prevent replay.
+        recorded_locks: LegacyMap<felt252, bool>,
+        // EIP 712 domain separation.
+        domain_hash: felt252,
+        // --- Mintable Token ---
         permitted_minter: ContractAddress,
         // --- Replaceability ---
         // Delay in seconds before performing an upgrade.
@@ -86,9 +101,9 @@ mod ERC20 {
     /// Emitted when tokens are moved from address `from` to address `to`.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct Transfer {
-	// #[key] - Not indexed, to maintain backward compatibility.
+        // #[key] - Not indexed, to maintain backward compatibility.
         from: ContractAddress,
-	// #[key] - Not indexed, to maintain backward compatibility.
+        // #[key] - Not indexed, to maintain backward compatibility.
         to: ContractAddress,
         value: u256
     }
@@ -97,9 +112,9 @@ mod ERC20 {
     /// to [approve](approve). `value` is the new allowance.
     #[derive(Copy, Drop, PartialEq, starknet::Event)]
     struct Approval {
-	// #[key] - Not indexed, to maintain backward compatibility.
+        // #[key] - Not indexed, to maintain backward compatibility.
         owner: ContractAddress,
-	// #[key] - Not indexed, to maintain backward compatibility.
+        // #[key] - Not indexed, to maintain backward compatibility.
         spender: ContractAddress,
         value: u256
     }
@@ -124,6 +139,7 @@ mod ERC20 {
         self.permitted_minter.write(permitted_minter);
         self._initialize_roles(:provisional_governance_admin);
         self.upgrade_delay.write(upgrade_delay);
+        self.domain_hash.write(calc_domain_hash());
     }
 
 
@@ -177,6 +193,84 @@ mod ERC20 {
     //
     // External
     //
+
+    // Sets the address of the locking contract.
+    #[external(v0)]
+    impl LockingContract of ILockingContract<ContractState> {
+        fn set_locking_contract(ref self: ContractState, locking_contract: ContractAddress) {
+            self.only_upgrade_governor();
+            assert(self.locking_contract.read().is_zero(), 'LOCKING_CONTRACT_ALREADY_SET');
+            assert(locking_contract.is_non_zero(), 'ZERO_ADDRESS');
+            self.locking_contract.write(locking_contract);
+        }
+
+        fn get_locking_contract(self: @ContractState) -> ContractAddress {
+            self.locking_contract.read()
+        }
+    }
+
+    #[external(v0)]
+    impl LockAndDelegate of ILockAndDelegate<ContractState> {
+        fn lock_and_delegate(ref self: ContractState, delegatee: ContractAddress, amount: u256) {
+            let account = get_caller_address();
+            self._lock_and_delegate(:account, :delegatee, :amount);
+        }
+
+        fn lock_and_delegate_by_sig(
+            ref self: ContractState,
+            account: ContractAddress,
+            delegatee: ContractAddress,
+            amount: u256,
+            nonce: felt252,
+            expiry: u64,
+            signature: Array<felt252>
+        ) {
+            assert(starknet::get_block_timestamp() <= expiry, 'SIGNATURE_EXPIRED');
+            let domain = self.domain_hash.read();
+            let hash = lock_and_delegate_message_hash(
+                :domain, :account, :delegatee, :amount, :nonce, :expiry
+            );
+
+            // Assert this signed request was not used.
+            let is_known_hash = self.recorded_locks.read(hash);
+            assert(is_known_hash == false, 'SIGNED_REQUEST_ALREADY_USED');
+
+            // Mark the request as used to prevent future replay.
+            self.recorded_locks.write(hash, true);
+
+            validate_signature(:account, :hash, :signature);
+            self._lock_and_delegate(:account, :delegatee, :amount);
+        }
+    }
+
+    #[generate_trait]
+    impl LockInternal of _LockInternal {
+        fn _lock_and_delegate(
+            ref self: ContractState,
+            account: ContractAddress,
+            delegatee: ContractAddress,
+            amount: u256
+        ) {
+            let locking_contract = self.locking_contract.read();
+            assert(locking_contract.is_non_zero(), 'LOCKING_CONTRACT_NOT_SET');
+            self._increase_account_allowance(:account, spender: locking_contract, :amount);
+            IMintableLockDispatcher { contract_address: locking_contract }
+                .permissioned_lock_and_delegate(:account, :delegatee, :amount);
+        }
+
+        fn _increase_account_allowance(
+            ref self: ContractState,
+            account: ContractAddress,
+            spender: ContractAddress,
+            amount: u256
+        ) {
+            let current_allowance = self.ERC20_allowances.read((account, spender));
+            // Skip, in case of allowance + amount exceed max_uint.
+            if current_allowance <= BoundedInt::max() - amount {
+                self._approve(owner: account, :spender, amount: (current_allowance + amount));
+            }
+        }
+    }
 
     #[external(v0)]
     impl MintableToken of IMintableToken<ContractState> {

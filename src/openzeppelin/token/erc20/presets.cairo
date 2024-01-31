@@ -1,3 +1,3 @@
-mod erc20votes;
+mod erc20_votes_lock;
 
-use erc20votes::ERC20VotesPreset;
+use erc20_votes_lock::ERC20VotesLock;

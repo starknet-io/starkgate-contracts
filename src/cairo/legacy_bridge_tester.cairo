@@ -145,18 +145,15 @@ mod LegacyBridgeTester {
     impl internals of _internals {
         fn only_upgrade_governor(self: @ContractState) {}
 
-        // Returns if finalized.
         fn is_finalized(self: @ContractState) -> bool {
             self.finalized.read()
         }
 
-        // Sets the implementation as finalized.
         fn finalize(ref self: ContractState) {
             self.finalized.write(true);
         }
 
 
-        // Sets the implementation activation time.
         fn set_impl_activation_time(
             ref self: ContractState, implementation_data: ImplementationData, activation_time: u64
         ) {
@@ -164,7 +161,6 @@ mod LegacyBridgeTester {
             self.impl_activation_time.write(impl_key, activation_time);
         }
 
-        // Returns the implementation activation time.
         fn get_impl_expiration_time(
             self: @ContractState, implementation_data: ImplementationData
         ) -> u64 {
@@ -172,7 +168,6 @@ mod LegacyBridgeTester {
             self.impl_expiration_time.read(impl_key)
         }
 
-        // Sets the implementation expiration time.
         fn set_impl_expiration_time(
             ref self: ContractState, implementation_data: ImplementationData, expiration_time: u64
         ) {

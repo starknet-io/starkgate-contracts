@@ -1,3 +1,68 @@
+// A lean dummy account that implements `is_valid_signature`.
+#[starknet::interface]
+trait IsValidSignature<TState> {
+    fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
+
+#[starknet::contract]
+mod TestAccount {
+    use array::ArrayTrait;
+    use array::SpanTrait;
+    use ecdsa::check_ecdsa_signature;
+
+    #[storage]
+    struct Storage {
+        public_key: felt252
+    }
+
+    #[constructor]
+    fn constructor(ref self: ContractState, _public_key: felt252) {
+        self.public_key.write(_public_key);
+    }
+
+    //
+    // External
+    //
+
+    #[external(v0)]
+    impl IsValidSignatureImpl of super::IsValidSignature<ContractState> {
+        fn is_valid_signature(
+            self: @ContractState, hash: felt252, signature: Array<felt252>
+        ) -> felt252 {
+            if self._is_valid_signature(hash, signature.span()) {
+                starknet::VALIDATED
+            } else {
+                0
+            }
+        }
+    }
+
+    //
+    // Internal
+    //
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        fn _is_valid_signature(
+            self: @ContractState, hash: felt252, signature: Span<felt252>
+        ) -> bool {
+            let valid_length = signature.len() == 2_u32;
+
+            if valid_length {
+                check_ecdsa_signature(
+                    message_hash: hash,
+                    public_key: self.public_key.read(),
+                    signature_r: *signature.at(0_u32),
+                    signature_s: *signature.at(1_u32)
+                )
+            } else {
+                false
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod test_utils {
     use array::ArrayTrait;
@@ -7,38 +72,48 @@ mod test_utils {
     use serde::Serde;
     use starknet::{ContractAddress, EthAddress, syscalls::deploy_syscall, get_contract_address};
     use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
-    use openzeppelin::token::erc20::presets::erc20votes::ERC20VotesPreset;
+    use openzeppelin::token::erc20::presets::erc20_votes_lock::ERC20VotesLock;
     use openzeppelin::token::erc20_v070::erc20::ERC20;
+    use src::strk::erc20_lockable::ERC20Lockable;
 
-    use super::super::mintable_token_interface::{
-        IMintableTokenDispatcher, IMintableTokenDispatcherTrait
+    use openzeppelin::governance::utils::interfaces::votes::{
+        IVotesDispatcher, IVotesDispatcherTrait
     };
-    use super::super::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use src::mintable_token_interface::{IMintableTokenDispatcher, IMintableTokenDispatcherTrait};
+    use src::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use array::SpanTrait;
-    use super::super::token_bridge::TokenBridge;
-    use super::super::token_bridge::TokenBridge::{
+    use src::token_bridge::TokenBridge;
+    use src::token_bridge::TokenBridge::{
         Event, WithdrawalLimitDisabled, WithdrawalLimitEnabled, WithdrawInitiated
     };
 
-    use super::super::token_test_setup::TokenTestSetup;
-    use super::super::token_test_setup_interface::{
+    use src::token_test_setup::TokenTestSetup;
+    use src::token_test_setup_interface::{
         ITokenTestSetupDispatcher, ITokenTestSetupDispatcherTrait
     };
-    use super::super::stub_msg_receiver::StubMsgReceiver;
+    use src::stub_msg_receiver::StubMsgReceiver;
 
-    use super::super::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
-    use super::super::token_bridge_admin_interface::{
+    use src::token_bridge_interface::{ITokenBridgeDispatcher, ITokenBridgeDispatcherTrait};
+    use src::token_bridge_admin_interface::{
         ITokenBridgeAdminDispatcher, ITokenBridgeAdminDispatcherTrait
     };
 
-    use super::super::replaceability_interface::{
+    use src::replaceability_interface::{
         IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait
     };
-    use super::super::roles_interface::{IRolesDispatcher, IRolesDispatcherTrait};
-    use super::super::access_control_interface::{
+    use src::roles_interface::{IRolesDispatcher, IRolesDispatcherTrait};
+    use src::access_control_interface::{
         IAccessControlDispatcher, IAccessControlDispatcherTrait, RoleId, RoleAdminChanged,
         RoleGranted, RoleRevoked,
     };
+    use super::super::mintable_lock_interface::{
+        ILockAndDelegateDispatcher, ILockAndDelegateDispatcherTrait, ILockingContractDispatcher,
+        ILockingContractDispatcherTrait, ITokenLock, ITokenLockDispatcher,
+        ITokenLockDispatcherTrait, IMintableLock, IMintableLockDispatcher,
+        IMintableLockDispatcherTrait
+    };
+
+    use super::TestAccount;
 
     const DEFAULT_UPGRADE_DELAY: u64 = 12345;
 
@@ -65,21 +140,50 @@ mod test_utils {
     }
 
 
-    fn get_roles(token_bridge_address: ContractAddress) -> IRolesDispatcher {
-        IRolesDispatcher { contract_address: token_bridge_address }
+    fn get_roles(contract_address: ContractAddress) -> IRolesDispatcher {
+        IRolesDispatcher { contract_address: contract_address }
     }
 
     fn get_replaceable(replaceable_address: ContractAddress) -> IReplaceableDispatcher {
         IReplaceableDispatcher { contract_address: replaceable_address }
     }
 
-    fn get_access_control(token_bridge_address: ContractAddress) -> IAccessControlDispatcher {
-        IAccessControlDispatcher { contract_address: token_bridge_address }
+    fn get_access_control(contract_address: ContractAddress) -> IAccessControlDispatcher {
+        IAccessControlDispatcher { contract_address: contract_address }
     }
 
 
     fn get_erc20_token(l2_token: ContractAddress) -> IERC20Dispatcher {
         IERC20Dispatcher { contract_address: l2_token }
+    }
+
+    fn get_erc20_votes_token(l2_token: ContractAddress) -> IVotesDispatcher {
+        IVotesDispatcher { contract_address: l2_token }
+    }
+
+    fn get_lock_and_delegate_interface(l2_token: ContractAddress) -> ILockAndDelegateDispatcher {
+        ILockAndDelegateDispatcher { contract_address: l2_token }
+    }
+
+    fn get_locking_contract_interface(l2_token: ContractAddress) -> ILockingContractDispatcher {
+        ILockingContractDispatcher { contract_address: l2_token }
+    }
+
+    fn get_token_lock_interface(l2_token: ContractAddress) -> ITokenLockDispatcher {
+        ITokenLockDispatcher { contract_address: l2_token }
+    }
+
+    fn get_mintable_lock_interface(l2_token: ContractAddress) -> IMintableLockDispatcher {
+        IMintableLockDispatcher { contract_address: l2_token }
+    }
+
+    fn arbitrary_address() -> ContractAddress {
+        starknet::contract_address_const::<3563>()
+    }
+
+
+    fn arbitrary_user() -> ContractAddress {
+        starknet::contract_address_const::<7171>()
     }
 
     fn caller() -> ContractAddress {
@@ -103,14 +207,12 @@ mod test_utils {
 
 
     fn set_contract_address_as_caller() {
-        let caller_address = caller();
-        starknet::testing::set_contract_address(address: caller_address);
+        starknet::testing::set_contract_address(address: caller());
     }
 
 
     fn set_contract_address_as_not_caller() {
-        let not_caller_address = not_caller();
-        starknet::testing::set_contract_address(address: not_caller_address);
+        starknet::testing::set_contract_address(address: not_caller());
     }
 
 
@@ -125,13 +227,16 @@ mod test_utils {
         u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
     }
 
+    fn lockable_erc20_class_hash() -> ClassHash {
+        ERC20Lockable::TEST_CLASS_HASH.try_into().unwrap()
+    }
 
     fn stock_erc20_class_hash() -> ClassHash {
         ERC20::TEST_CLASS_HASH.try_into().unwrap()
     }
 
-    fn votes_erc20_class_hash() -> ClassHash {
-        ERC20VotesPreset::TEST_CLASS_HASH.try_into().unwrap()
+    fn erc20_votes_lock_class_hash() -> ClassHash {
+        ERC20VotesLock::TEST_CLASS_HASH.try_into().unwrap()
     }
 
     fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
@@ -161,29 +266,29 @@ mod test_utils {
         calldata.span()
     }
 
-    fn get_l2_votes_token_deployment_calldata(
-        initial_owner: ContractAddress,
-        permitted_minter: ContractAddress,
-        token_gov: ContractAddress,
-        initial_supply: u256,
+    fn get_votes_lock_deployment_calldata(
+        locked_token: ContractAddress, token_gov: ContractAddress,
     ) -> Span<felt252> {
         // Set the constructor calldata.
         let mut calldata = ArrayTrait::new();
         'NAME'.serialize(ref calldata);
         'SYMBOL'.serialize(ref calldata);
         18_u8.serialize(ref calldata);
-        initial_supply.serialize(ref calldata);
-        initial_owner.serialize(ref calldata);
-        permitted_minter.serialize(ref calldata);
+        locked_token.serialize(ref calldata);
         token_gov.serialize(ref calldata);
         DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
         calldata.span()
     }
 
-    fn simple_deploy_l2_token() -> ContractAddress {
+    fn simple_deploy_token() -> ContractAddress {
         let permitted_minter = starknet::contract_address_const::<9256>();
         let initial_owner = initial_owner();
         deploy_l2_token(:initial_owner, :permitted_minter, initial_supply: 1000_u256)
+    }
+
+    fn simple_deploy_lockable_token() -> ContractAddress {
+        let initial_owner = initial_owner();
+        deploy_lockable_token(:initial_owner, initial_supply: 1000_u256)
     }
 
     fn deploy_l2_token(
@@ -204,21 +309,53 @@ mod test_utils {
         l2_token
     }
 
-    fn deploy_l2_votes_token(
-        initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
+    fn deploy_lockable_token(
+        initial_owner: ContractAddress, initial_supply: u256,
     ) -> ContractAddress {
-        let calldata = get_l2_votes_token_deployment_calldata(
-            :initial_owner, :permitted_minter, token_gov: permitted_minter, :initial_supply
+        let calldata = get_l2_token_deployment_calldata(
+            :initial_owner,
+            permitted_minter: permitted_minter(),
+            token_gov: caller(),
+            :initial_supply
         );
 
         // Set the caller address for all the functions calls (except the constructor).
         set_contract_address_as_caller();
 
         // Deploy the contract.
-        let (l2_votes_token, _) = deploy_syscall(votes_erc20_class_hash(), 0, calldata, false)
-            .unwrap();
-        l2_votes_token
+        let (token, _) = deploy_syscall(lockable_erc20_class_hash(), 0, calldata, false).unwrap();
+        token
     }
+
+    fn deploy_votes_lock(locked_token: ContractAddress) -> ContractAddress {
+        let calldata = get_votes_lock_deployment_calldata(:locked_token, token_gov: locked_token);
+
+        // Set the caller address for all the functions calls (except the constructor).
+        set_contract_address_as_caller();
+
+        // Deploy the contract.
+        let (erc20_votes_lock, _) = deploy_syscall(
+            erc20_votes_lock_class_hash(), 0, calldata, false
+        )
+            .unwrap();
+        erc20_votes_lock
+    }
+
+
+    fn deploy_lock_and_votes_tokens(initial_supply: u256) -> (ContractAddress, ContractAddress) {
+        let lockable_token = deploy_lockable_token(initial_owner: caller(), :initial_supply);
+        let votes_lock_token = deploy_votes_lock(locked_token: lockable_token);
+        (lockable_token, votes_lock_token)
+    }
+
+    fn deploy_lock_and_votes_tokens_with_owner(
+        initial_owner: ContractAddress, initial_supply: u256
+    ) -> (ContractAddress, ContractAddress) {
+        let lockable_token = deploy_lockable_token(:initial_owner, :initial_supply);
+        let votes_lock_token = deploy_votes_lock(locked_token: lockable_token);
+        (lockable_token, votes_lock_token)
+    }
+
 
     fn deploy_upgraded_legacy_bridge(
         l1_token: EthAddress, l2_recipient: ContractAddress, token_mismatch: bool
@@ -290,15 +427,15 @@ mod test_utils {
     fn pop_and_deserialize_last_event<T, impl TEvent: starknet::Event<T>, impl TDrop: Drop<T>>(
         address: ContractAddress
     ) -> T {
-        let mut prev_log: T = starknet::testing::pop_log(address: address)
-            .expect('Event deserializion failed');
+        let mut prev_log = starknet::testing::pop_log_raw(address: address)
+            .expect('Event queue is empty.');
         loop {
-            match starknet::testing::pop_log::<T>(:address) {
+            match starknet::testing::pop_log_raw(:address) {
                 Option::Some(log) => { prev_log = log; },
                 Option::None(()) => { break; },
             };
         };
-        prev_log
+        deserialize_event(raw_event: prev_log)
     }
 
 
@@ -367,23 +504,23 @@ mod test_utils {
     }
 
     fn set_caller_as_upgrade_governor(replaceable_address: ContractAddress) {
-        let contract_roles = get_roles(token_bridge_address: replaceable_address);
+        let contract_roles = get_roles(contract_address: replaceable_address);
         contract_roles.register_upgrade_governor(account: caller());
     }
 
     fn set_caller_as_app_role_admin_app_governor(token_bridge_address: ContractAddress) {
-        let token_bridge_roles = get_roles(:token_bridge_address);
+        let token_bridge_roles = get_roles(contract_address: token_bridge_address);
         token_bridge_roles.register_app_role_admin(account: caller());
         token_bridge_roles.register_app_governor(account: caller());
     }
 
     fn set_caller_as_security_admin(token_bridge_address: ContractAddress) {
-        let token_bridge_roles = get_roles(:token_bridge_address);
+        let token_bridge_roles = get_roles(contract_address: token_bridge_address);
         token_bridge_roles.register_security_admin(account: caller());
     }
 
     fn set_caller_as_security_agent(token_bridge_address: ContractAddress) {
-        let token_bridge_roles = get_roles(:token_bridge_address);
+        let token_bridge_roles = get_roles(contract_address: token_bridge_address);
         token_bridge_roles.register_security_agent(account: caller());
     }
 
@@ -561,5 +698,24 @@ mod test_utils {
             :l2_recipient,
             amount: amount_to_deposit
         );
+    }
+
+    fn deploy_account_internal(
+        account_contract_class_hash: ClassHash, public_key: felt252
+    ) -> ContractAddress {
+        // Deploy the contract.
+        let calldata = array![public_key];
+        let (account_address, _) = deploy_syscall(
+            account_contract_class_hash, 0, calldata.span(), false
+        )
+            .unwrap();
+        account_address
+    }
+
+    fn deploy_account(public_key: felt252) -> ContractAddress {
+        deploy_account_internal(
+            account_contract_class_hash: TestAccount::TEST_CLASS_HASH.try_into().unwrap(),
+            :public_key
+        )
     }
 }

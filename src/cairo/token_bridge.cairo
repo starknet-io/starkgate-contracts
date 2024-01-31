@@ -7,7 +7,9 @@ use zeroable::Zeroable;
 #[starknet::contract]
 mod TokenBridge {
     use super::super::err_msg::AccessErrors::{
-        CALLER_MISSING_ROLE, ZERO_ADDRESS, ALREADY_INITIALIZED, ONLY_UPGRADE_GOVERNOR
+        CALLER_MISSING_ROLE, ZERO_ADDRESS, ALREADY_INITIALIZED, ONLY_APP_GOVERNOR, ONLY_OPERATOR,
+        ONLY_TOKEN_ADMIN, ONLY_UPGRADE_GOVERNOR, ONLY_SECURITY_ADMIN, ONLY_SECURITY_AGENT,
+        GOV_ADMIN_CANNOT_RENOUNCE
     };
     use super::super::err_msg::ERC20Errors as ERC20Errors;
     use super::super::err_msg::ReplaceErrors as ReplaceErrors;
@@ -591,7 +593,7 @@ mod TokenBridge {
             self.only_upgrade_governor();
 
             // Validate implementation is not finalized.
-            assert(!self.is_finalized(), 'FINALIZED');
+            assert(!self.is_finalized(), ReplaceErrors::FINALIZED);
 
             let now = get_block_timestamp();
             let impl_activation_time = self.get_impl_activation_time(:implementation_data);
@@ -599,10 +601,10 @@ mod TokenBridge {
 
             // Zero activation time means that this implementation & init vector combination
             // was not previously added.
-            assert(impl_activation_time.is_non_zero(), 'UNKNOWN_IMPLEMENTATION');
+            assert(impl_activation_time.is_non_zero(), ReplaceErrors::UNKNOWN_IMPLEMENTATION);
 
-            assert(impl_activation_time <= now, 'NOT_ENABLED_YET');
-            assert(now <= impl_expiration_time, 'IMPLEMENTATION_EXPIRED');
+            assert(impl_activation_time <= now, ReplaceErrors::NOT_ENABLED_YET);
+            assert(now <= impl_expiration_time, ReplaceErrors::IMPLEMENTATION_EXPIRED);
             // We emit now so that finalize emits last (if it does).
             self.emit(ImplementationReplaced { implementation_data });
 
@@ -626,14 +628,14 @@ mod TokenBridge {
                         function_selector: EIC_INITIALIZE_SELECTOR,
                         calldata: calldata_wrapper.span()
                     );
-                    assert(res.is_ok(), 'EIC_LIB_CALL_FAILED');
+                    assert(res.is_ok(), ReplaceErrors::EIC_LIB_CALL_FAILED);
                 },
                 Option::None(()) => {}
             };
 
             // Replace the class hash.
             let result = starknet::replace_class_syscall(implementation_data.impl_hash);
-            assert(result.is_ok(), 'REPLACE_CLASS_HASH_FAILED');
+            assert(result.is_ok(), ReplaceErrors::REPLACE_CLASS_HASH_FAILED);
 
             // Remove implementation data, as it was comsumed.
             self.set_impl_activation_time(:implementation_data, activation_time: 0);
@@ -643,13 +645,10 @@ mod TokenBridge {
 
     #[generate_trait]
     impl ReplaceableInternal of _ReplaceableInternal {
-        // Returns if finalized.
         fn is_finalized(self: @ContractState) -> bool {
             self.finalized.read()
         }
 
-
-        // Sets the implementation as finalized.
         fn finalize(ref self: ContractState) {
             self.finalized.write(true);
         }
@@ -810,18 +809,18 @@ mod TokenBridge {
             self._grant_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
         }
 
+        fn remove_app_role_admin(ref self: ContractState, account: ContractAddress) {
+            let event = Event::AppRoleAdminRemoved(
+                AppRoleAdminRemoved { removed_account: account, removed_by: get_caller_address() }
+            );
+            self._revoke_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
+        }
+
         fn register_security_admin(ref self: ContractState, account: ContractAddress) {
             let event = Event::SecurityAdminAdded(
                 SecurityAdminAdded { added_account: account, added_by: get_caller_address() }
             );
             self._grant_role_and_emit(role: SECURITY_ADMIN, :account, :event);
-        }
-
-        fn register_security_agent(ref self: ContractState, account: ContractAddress) {
-            let event = Event::SecurityAgentAdded(
-                SecurityAgentAdded { added_account: account, added_by: get_caller_address() }
-            );
-            self._grant_role_and_emit(role: SECURITY_AGENT, :account, :event);
         }
 
         fn remove_security_admin(ref self: ContractState, account: ContractAddress) {
@@ -831,6 +830,13 @@ mod TokenBridge {
             self._revoke_role_and_emit(role: SECURITY_ADMIN, :account, :event);
         }
 
+        fn register_security_agent(ref self: ContractState, account: ContractAddress) {
+            let event = Event::SecurityAgentAdded(
+                SecurityAgentAdded { added_account: account, added_by: get_caller_address() }
+            );
+            self._grant_role_and_emit(role: SECURITY_AGENT, :account, :event);
+        }
+
         fn remove_security_agent(ref self: ContractState, account: ContractAddress) {
             let event = Event::SecurityAgentRemoved(
                 SecurityAgentRemoved { removed_account: account, removed_by: get_caller_address() }
@@ -838,13 +844,6 @@ mod TokenBridge {
             self._revoke_role_and_emit(role: SECURITY_AGENT, :account, :event);
         }
 
-
-        fn remove_app_role_admin(ref self: ContractState, account: ContractAddress) {
-            let event = Event::AppRoleAdminRemoved(
-                AppRoleAdminRemoved { removed_account: account, removed_by: get_caller_address() }
-            );
-            self._revoke_role_and_emit(role: APP_ROLE_ADMIN, :account, :event);
-        }
 
         fn register_governance_admin(ref self: ContractState, account: ContractAddress) {
             let event = Event::GovernanceAdminAdded(
@@ -910,7 +909,7 @@ mod TokenBridge {
         // TODO -  change to GOVERNANCE_ADMIN_CANNOT_SELF_REMOVE when the 32 characters limitations
         // is off.
         fn renounce(ref self: ContractState, role: RoleId) {
-            assert(role != GOVERNANCE_ADMIN, 'GOV_ADMIN_CANNOT_SELF_REMOVE');
+            assert(role != GOVERNANCE_ADMIN, GOV_ADMIN_CANNOT_RENOUNCE);
             self.renounce_role(:role, account: get_caller_address())
         // TODO add another event? Currently there are two events when a role is removed but
         // only one if it was renounced.
@@ -950,7 +949,7 @@ mod TokenBridge {
         fn _initialize_roles(ref self: ContractState) {
             let provisional_governance_admin = get_caller_address();
             let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
-            assert(un_initialized, 'ROLES_ALREADY_INITIALIZED');
+            assert(un_initialized, ALREADY_INITIALIZED);
             self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);
             self._set_role_admin(role: APP_GOVERNOR, admin_role: APP_ROLE_ADMIN);
             self._set_role_admin(role: APP_ROLE_ADMIN, admin_role: GOVERNANCE_ADMIN);
@@ -965,24 +964,24 @@ mod TokenBridge {
         }
 
         fn only_app_governor(self: @ContractState) {
-            assert(self.is_app_governor(get_caller_address()), 'ONLY_APP_GOVERNOR');
+            assert(self.is_app_governor(get_caller_address()), ONLY_APP_GOVERNOR);
         }
         fn only_operator(self: @ContractState) {
-            assert(self.is_operator(get_caller_address()), 'ONLY_OPERATOR');
+            assert(self.is_operator(get_caller_address()), ONLY_OPERATOR);
         }
         fn only_token_admin(self: @ContractState) {
-            assert(self.is_token_admin(get_caller_address()), 'ONLY_TOKEN_ADMIN');
+            assert(self.is_token_admin(get_caller_address()), ONLY_TOKEN_ADMIN);
         }
         fn only_upgrade_governor(self: @ContractState) {
-            assert(self.is_upgrade_governor(get_caller_address()), 'ONLY_UPGRADE_GOVERNOR');
+            assert(self.is_upgrade_governor(get_caller_address()), ONLY_UPGRADE_GOVERNOR);
         }
 
         fn only_security_admin(self: @ContractState) {
-            assert(self.is_security_admin(get_caller_address()), 'ONLY_SECURITY_ADMIN');
+            assert(self.is_security_admin(get_caller_address()), ONLY_SECURITY_ADMIN);
         }
 
         fn only_security_agent(self: @ContractState) {
-            assert(self.is_security_agent(get_caller_address()), 'ONLY_SECURITY_AGENT');
+            assert(self.is_security_agent(get_caller_address()), ONLY_SECURITY_AGENT);
         }
     }
 

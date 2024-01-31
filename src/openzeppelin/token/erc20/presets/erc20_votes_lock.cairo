@@ -3,52 +3,42 @@
 
 /// ERC20 with the ERC20Votes extension.
 #[starknet::contract]
-mod ERC20VotesPreset {
+mod ERC20VotesLock {
     use core::result::ResultTrait;
     use src::access_control_interface::{
-        IAccessControl, RoleId, RoleAdminChanged, RoleGranted, RoleRevoked};
+        IAccessControl, RoleId, RoleAdminChanged, RoleGranted, RoleRevoked
+    };
     use src::roles_interface::IMinimalRoles;
     use src::roles_interface::{
-        GOVERNANCE_ADMIN, UPGRADE_GOVERNOR,
-        GovernanceAdminAdded, GovernanceAdminRemoved, UpgradeGovernorAdded, UpgradeGovernorRemoved
+        GOVERNANCE_ADMIN, UPGRADE_GOVERNOR, GovernanceAdminAdded, GovernanceAdminRemoved,
+        UpgradeGovernorAdded, UpgradeGovernorRemoved
     };
     use src::err_msg::AccessErrors::{
-        INVALID_MINTER,
-        CALLER_MISSING_ROLE,
-        ZERO_ADDRESS,
-        ALREADY_INITIALIZED,
-        ONLY_MINTER,
-        ONLY_UPGRADE_GOVERNOR,
-        ONLY_SELF_CAN_RENOUNCE,
-        GOV_ADMIN_CANNOT_RENOUNCE,
+        INVALID_TOKEN, CALLER_MISSING_ROLE, ZERO_ADDRESS, ALREADY_INITIALIZED,
+        ONLY_UPGRADE_GOVERNOR, ONLY_SELF_CAN_RENOUNCE, GOV_ADMIN_CANNOT_RENOUNCE,
         ZERO_ADDRESS_GOV_ADMIN,
     };
     use src::err_msg::ReplaceErrors::{
-        FINALIZED,
-        UNKNOWN_IMPLEMENTATION,
-        NOT_ENABLED_YET,
-        IMPLEMENTATION_EXPIRED,
-        EIC_LIB_CALL_FAILED,
-        REPLACE_CLASS_HASH_FAILED,
+        FINALIZED, UNKNOWN_IMPLEMENTATION, NOT_ENABLED_YET, IMPLEMENTATION_EXPIRED,
+        EIC_LIB_CALL_FAILED, REPLACE_CLASS_HASH_FAILED,
     };
 
     use src::replaceability_interface::{
         ImplementationData, IReplaceable, IReplaceableDispatcher, IReplaceableDispatcherTrait,
-        EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION,
-        ImplementationAdded, ImplementationRemoved, ImplementationReplaced, ImplementationFinalized
+        EIC_INITIALIZE_SELECTOR, IMPLEMENTATION_EXPIRATION, ImplementationAdded,
+        ImplementationRemoved, ImplementationReplaced, ImplementationFinalized
     };
 
     use ERC20::InternalTrait;
     use starknet::{
-        ContractAddress,
-        contract_address_const,
-        get_caller_address,
-        get_block_timestamp
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
+        get_contract_address,
     };
     use starknet::syscalls::library_call_syscall;
 
     use starknet::class_hash::{ClassHash, Felt252TryIntoClassHash};
-    use src::mintable_token_interface::{IMintableToken, IMintableTokenCamel};
+    use src::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use src::mintable_lock_interface::{IMintableLock, ITokenLock, Locked, Unlocked};
     use openzeppelin::governance::utils::interfaces::IVotes;
     use openzeppelin::token::erc20::ERC20;
     use openzeppelin::token::erc20::extensions::ERC20Votes;
@@ -61,7 +51,7 @@ mod ERC20VotesPreset {
 
     #[storage]
     struct Storage {
-        permitted_minter: ContractAddress,
+        locked_token: ContractAddress,
         // --- Replaceability ---
         // Delay in seconds before performing an upgrade.
         upgrade_delay: u64,
@@ -102,6 +92,9 @@ mod ERC20VotesPreset {
         GovernanceAdminRemoved: GovernanceAdminRemoved,
         UpgradeGovernorAdded: UpgradeGovernorAdded,
         UpgradeGovernorRemoved: UpgradeGovernorRemoved,
+        // --- Token Lock ---
+        Locked: Locked,
+        Unlocked: Unlocked,
     }
 
     //
@@ -135,9 +128,7 @@ mod ERC20VotesPreset {
         name: felt252,
         symbol: felt252,
         decimals: u8,
-        initial_supply: u256,
-        recipient: ContractAddress,
-        permitted_minter: ContractAddress,
+        locked_token: ContractAddress,
         provisional_governance_admin: ContractAddress,
         upgrade_delay: u64,
     ) {
@@ -146,92 +137,14 @@ mod ERC20VotesPreset {
 
         let mut erc20_state = ERC20::unsafe_new_contract_state();
         ERC20::InternalImpl::initializer(ref erc20_state, name, symbol, decimals);
-        ERC20::InternalImpl::_mint::<ERC20VotesHooksImpl>(
-            ref erc20_state, recipient, initial_supply
-        );
-        assert(permitted_minter.is_non_zero(), INVALID_MINTER);
-        self.permitted_minter.write(permitted_minter);
+        assert(locked_token.is_non_zero(), INVALID_TOKEN);
+        self.locked_token.write(locked_token);
         self._initialize_roles(:provisional_governance_admin);
         self.upgrade_delay.write(upgrade_delay);
     }
 
     #[generate_trait]
-    impl InternalFunctions of IInternalFunctions {
-        // --- Replaceability ---
-        fn is_finalized(self: @ContractState) -> bool {
-            self.finalized.read()
-        }
-
-        fn finalize(ref self: ContractState) {
-            self.finalized.write(true);
-        }
-
-        fn set_impl_activation_time(
-            ref self: ContractState, implementation_data: ImplementationData, activation_time: u64
-        ) {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_activation_time.write(impl_key, activation_time);
-        }
-
-        // Returns the implementation activation time.
-        fn get_impl_expiration_time(
-            self: @ContractState, implementation_data: ImplementationData
-        ) -> u64 {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_expiration_time.read(impl_key)
-        }
-
-        // Sets the implementation expiration time.
-        fn set_impl_expiration_time(
-            ref self: ContractState, implementation_data: ImplementationData, expiration_time: u64
-        ) {
-            let impl_key = calc_impl_key(:implementation_data);
-            self.impl_expiration_time.write(impl_key, expiration_time);
-        }
-
-        // --- Access Control ---
-        fn assert_only_role(self: @ContractState, role: RoleId) {
-            let authorized: bool = self.has_role(:role, account: get_caller_address());
-            assert(authorized, CALLER_MISSING_ROLE);
-        }
-
-        //
-        // WARNING
-        // This method is unprotected and should be used only from the contract's constructor or
-        // from grant_role.
-        //
-
-        fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
-            if !self.has_role(:role, :account) {
-                self.role_members.write((role, account), true);
-                self.emit(RoleGranted { role, account, sender: get_caller_address() });
-            }
-        }
-
-        //
-        // WARNING
-        // This method is unprotected and should be used only from revoke_role or from
-        // renounce_role.
-        //
-
-        fn _revoke_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
-            if self.has_role(:role, :account) {
-                self.role_members.write((role, account), false);
-                self.emit(RoleRevoked { role, account, sender: get_caller_address() });
-            }
-        }
-
-        //
-        // WARNING
-        // This method is unprotected and should not be used outside of a contract's constructor.
-        //
-
-        fn _set_role_admin(ref self: ContractState, role: RoleId, admin_role: RoleId) {
-            let previous_admin_role = self.get_role_admin(:role);
-            self.role_admin.write(role, admin_role);
-            self.emit(RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role });
-        }
-
+    impl RolesInternal of _RolesInternal {
         // --- Roles ---
         fn _grant_role_and_emit(
             ref self: ContractState, role: RoleId, account: ContractAddress, event: Event
@@ -278,26 +191,34 @@ mod ERC20VotesPreset {
     //
 
     #[external(v0)]
-    impl MintableToken of IMintableToken<ContractState> {
-        fn permissioned_mint(ref self: ContractState, account: ContractAddress, amount: u256) {
-            assert(get_caller_address() == self.permitted_minter.read(), ONLY_MINTER);
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            unsafe_state._mint::<ERC20VotesHooksImpl>(recipient: account, :amount);
-        }
-        fn permissioned_burn(ref self: ContractState, account: ContractAddress, amount: u256) {
-            assert(get_caller_address() == self.permitted_minter.read(), ONLY_MINTER);
-            let mut unsafe_state = ERC20::unsafe_new_contract_state();
-            unsafe_state._burn::<ERC20VotesHooksImpl>(:account, :amount);
+    impl MintableLock of IMintableLock<ContractState> {
+        fn permissioned_lock_and_delegate(
+            ref self: ContractState,
+            account: ContractAddress,
+            delegatee: ContractAddress,
+            amount: u256
+        ) {
+            // Only locked token.
+            assert(get_caller_address() == self.locked_token.read(), 'INVALID_CALLER');
+
+            // Lock.
+            self._lock(:account, :amount);
+
+            // Delegate.
+            let mut unsafe_state = ERC20Votes::unsafe_new_contract_state();
+            ERC20Votes::InternalImpl::_delegate(ref unsafe_state, :account, :delegatee);
         }
     }
 
     #[external(v0)]
-    impl MintableTokenCamelImpl of IMintableTokenCamel<ContractState> {
-        fn permissionedMint(ref self: ContractState, account: ContractAddress, amount: u256) {
-            MintableToken::permissioned_mint(ref self, account, amount);
+    impl TokenLock of ITokenLock<ContractState> {
+        fn lock(ref self: ContractState, amount: u256) {
+            let account = get_caller_address();
+            self._lock(:account, :amount);
         }
-        fn permissionedBurn(ref self: ContractState, account: ContractAddress, amount: u256) {
-            MintableToken::permissioned_burn(ref self, account, amount);
+        fn unlock(ref self: ContractState, amount: u256) {
+            let account = get_caller_address();
+            self._unlock(:account, :amount);
         }
     }
 
@@ -308,6 +229,37 @@ mod ERC20VotesPreset {
         poseidon::poseidon_hash_span(hash_input.span())
     }
 
+    #[generate_trait]
+    impl ReplaceableInternal of _ReplaceableInternal {
+        fn is_finalized(self: @ContractState) -> bool {
+            self.finalized.read()
+        }
+
+        fn finalize(ref self: ContractState) {
+            self.finalized.write(true);
+        }
+
+        fn set_impl_activation_time(
+            ref self: ContractState, implementation_data: ImplementationData, activation_time: u64
+        ) {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_activation_time.write(impl_key, activation_time);
+        }
+
+        fn get_impl_expiration_time(
+            self: @ContractState, implementation_data: ImplementationData
+        ) -> u64 {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_expiration_time.read(impl_key)
+        }
+
+        fn set_impl_expiration_time(
+            ref self: ContractState, implementation_data: ImplementationData, expiration_time: u64
+        ) {
+            let impl_key = calc_impl_key(:implementation_data);
+            self.impl_expiration_time.write(impl_key, expiration_time);
+        }
+    }
 
     #[external(v0)]
     impl Replaceable of IReplaceable<ContractState> {
@@ -416,7 +368,32 @@ mod ERC20VotesPreset {
     }
 
     #[generate_trait]
-    impl AccessControlImplInternal of IAccessControlInternal {
+    impl LockImpl of _LockImpl {
+        fn _lock(ref self: ContractState, account: ContractAddress, amount: u256) {
+            let _this = get_contract_address();
+            IERC20Dispatcher {
+                contract_address: self.locked_token.read()
+            }.transfer_from(sender: account, recipient: _this, :amount);
+            let mut unsafe_state = ERC20::unsafe_new_contract_state();
+            unsafe_state._mint::<ERC20VotesHooksImpl>(recipient: account, :amount);
+
+            self.emit(Locked { account: account, amount: amount });
+        }
+
+        fn _unlock(ref self: ContractState, account: ContractAddress, amount: u256) {
+            let mut unsafe_state = ERC20::unsafe_new_contract_state();
+            unsafe_state._burn::<ERC20VotesHooksImpl>(:account, :amount);
+
+            IERC20Dispatcher {
+                contract_address: self.locked_token.read()
+            }.transfer(recipient: account, :amount);
+
+            self.emit(Unlocked { account: account, amount: amount });
+        }
+    }
+
+    #[generate_trait]
+    impl AccessControlImplInternal of _AccessControlImplInternal {
         fn grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             let admin = self.get_role_admin(:role);
             self.assert_only_role(role: admin);
@@ -432,6 +409,49 @@ mod ERC20VotesPreset {
         fn renounce_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
             assert(get_caller_address() == account, ONLY_SELF_CAN_RENOUNCE);
             self._revoke_role(:role, :account);
+        }
+    }
+
+    #[generate_trait]
+    impl InternalAccessControl of _InternalAccessControl {
+        fn assert_only_role(self: @ContractState, role: RoleId) {
+            let authorized: bool = self.has_role(:role, account: get_caller_address());
+            assert(authorized, CALLER_MISSING_ROLE);
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should be used only from the contract's constructor or
+        // from grant_role.
+        //
+        fn _grant_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
+            if !self.has_role(:role, :account) {
+                self.role_members.write((role, account), true);
+                self.emit(RoleGranted { role, account, sender: get_caller_address() });
+            }
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should be used only from revoke_role or from
+        // renounce_role.
+        //
+        fn _revoke_role(ref self: ContractState, role: RoleId, account: ContractAddress) {
+            if self.has_role(:role, :account) {
+                self.role_members.write((role, account), false);
+                self.emit(RoleRevoked { role, account, sender: get_caller_address() });
+            }
+        }
+
+        //
+        // WARNING
+        // This method is unprotected and should not be used outside of a contract's constructor.
+        //
+
+        fn _set_role_admin(ref self: ContractState, role: RoleId, admin_role: RoleId) {
+            let previous_admin_role = self.get_role_admin(:role);
+            self.role_admin.write(role, admin_role);
+            self.emit(RoleAdminChanged { role, previous_admin_role, new_admin_role: admin_role });
         }
     }
 
@@ -535,9 +555,9 @@ mod ERC20VotesPreset {
             let mut unsafe_state = ERC20::unsafe_new_contract_state();
             let caller = starknet::get_caller_address();
             ERC20::InternalImpl::_spend_allowance(ref unsafe_state, sender, caller, amount);
-            ERC20::InternalImpl::_transfer::<ERC20VotesHooksImpl>(
-                ref unsafe_state, sender, recipient, amount
-            );
+            ERC20::InternalImpl::_transfer::<
+                ERC20VotesHooksImpl
+            >(ref unsafe_state, sender, recipient, amount);
             true
         }
 
