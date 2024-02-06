@@ -1,6 +1,5 @@
 import pytest
 from web3 import Web3
-from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 from starkware.eth.eth_test_utils import EthContract, EthRevertException, EthTestUtils, EthAccount
 from solidity.conftest import (
     add_implementation_and_upgrade,
@@ -11,16 +10,8 @@ from solidity.conftest import (
     deploy_proxy,
     messaging_contract,
     mock_erc20_contract,
-    StarknetTokenBridgeWrapper,
-    EthBridgeWrapper,
-    StarknetERC20BridgeWrapper,
-    TokenBridgeWrapper,
     L1_TOKEN_ADDRESS_OF_ETH,
-    L2_TOKEN_CONTRACT,
     MAX_UINT,
-    HANDLE_TOKEN_DEPOSIT_SELECTOR,
-    HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR,
-    HANDLE_TOKEN_DEPLOYMENT_SELECTOR,
     TOKEN_ADDRESS,
     UpgradeAssistEIC,
     StarknetTokenBridge,
@@ -48,6 +39,8 @@ DEPOSIT_AMOUNT = 2 * HALF_DEPOSIT_AMOUNT
 WITHDRAW_AMOUNT = 3
 MESSAGE_CANCEL_DELAY = 1000
 MAX_TVL = 496351
+MAX_FEE = 10**16
+MIN_FEE = 10**12
 
 
 @pytest.fixture(scope="session")
@@ -134,6 +127,23 @@ def legacy_tester_erc20_new_proxy_bridge(
     return setup_bridge(
         governor, proxy, legacy_erc20_bridge_impl, mock_erc20_contract.address, messaging_contract
     )
+
+
+def test_fee_values(fee_tester):
+    with pytest.raises(EthRevertException, match="INSUFFICIENT_FEE_VALUE"):
+        fee_tester.testCheckFee.call(0)
+
+    for valid_fee in [MIN_FEE, MAX_FEE]:
+        fee_tester.testCheckFee.call(valid_fee)
+
+    deposit_fee = fee_tester.estimateDepositFeeWei.call()
+    assert MIN_FEE * 10 < deposit_fee < MAX_FEE // 10
+
+    enrollment_fee = fee_tester.estimateEnrollmentFeeWei.call()
+    assert MIN_FEE * 10 < enrollment_fee < MAX_FEE // 10
+
+    with pytest.raises(EthRevertException, match="FEE_VALUE_TOO_HIGH"):
+        fee_tester.testCheckFee.call(1 + MAX_FEE)
 
 
 def test_erc20_bridge_deposit_cancel_upgrade(

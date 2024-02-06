@@ -24,6 +24,7 @@ contract StarknetTokenBridge is
     IStarkgateBridge,
     IStarkgateService,
     Identity,
+    Fees,
     StarknetTokenStorage,
     ProxySupport
 {
@@ -90,7 +91,7 @@ contract StarknetTokenBridge is
     uint256 constant DEPOSIT_MESSAGE_FIXED_SIZE = 1;
 
     function identify() external pure virtual returns (string memory) {
-        return "StarkWare_StarknetTokenBridge_2.0_3";
+        return "StarkWare_StarknetTokenBridge_2.0_4";
     }
 
     function validateInitData(bytes calldata data) internal view virtual override {
@@ -139,17 +140,17 @@ contract StarknetTokenBridge is
         _;
     }
 
-    function estimateDepositFeeWei() external view returns (uint256) {
+    function estimateDepositFeeWei() external pure returns (uint256) {
         return Fees.estimateDepositFee();
     }
 
-    function estimateEnrollmentFeeWei() external view returns (uint256) {
+    function estimateEnrollmentFeeWei() external pure returns (uint256) {
         return Fees.estimateEnrollmentFee();
     }
 
     // Virtual functions.
     function acceptDeposit(address token, uint256 amount) internal virtual returns (uint256) {
-        Fees.checkDepositFee(msg.value);
+        Fees.checkFee(msg.value);
         uint256 currentBalance = IERC20(token).balanceOf(address(this));
         require(currentBalance + amount <= getMaxTotalBalance(token), "MAX_BALANCE_EXCEEDED");
         Transfers.transferIn(token, msg.sender, amount);
@@ -429,7 +430,7 @@ contract StarknetTokenBridge is
 
     function sendDeployMessage(address token) internal returns (bytes32) {
         require(l2TokenBridge() != 0, "L2_BRIDGE_NOT_SET");
-        Fees.checkEnrollmentFee(msg.value);
+        Fees.checkFee(msg.value);
 
         (bytes32 deploymentMsgHash, ) = messagingContract().sendMessageToL2{value: msg.value}(
             l2TokenBridge(),

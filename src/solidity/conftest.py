@@ -22,6 +22,7 @@ from solidity.test_contracts import (
     StarknetTokenBridgeTester,
     StarknetERC20BridgeTester,
     SelfRemoveTester,
+    FeeTester,
 )
 
 DYNAMIC_FEE = -1
@@ -189,6 +190,11 @@ def governor(eth_test_utils: EthTestUtils) -> EthAccount:
 @pytest.fixture(scope="session")
 def regular_user(eth_test_utils: EthTestUtils) -> EthContract:
     return eth_test_utils.accounts[3]
+
+
+@pytest.fixture
+def fee_tester(governor: EthAccount) -> EthContract:
+    return governor.deploy(FeeTester)
 
 
 @pytest.fixture

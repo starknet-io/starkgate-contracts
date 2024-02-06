@@ -191,18 +191,17 @@ def test_deposit_l2_token_contract_not_set(token_bridge_wrapper: TokenBridgeWrap
 def test_deposit_fee_too_low(token_bridge_wrapper: TokenBridgeWrapper):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
     with pytest.raises(EthRevertException, match="INSUFFICIENT_FEE_VALUE"):
-        token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=1)
+        token_bridge_wrapper.deposit(amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=0)
 
     with pytest.raises(EthRevertException, match="INSUFFICIENT_FEE_VALUE"):
         token_bridge_wrapper.deposit(
-            amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=1, message=MESSAGE
+            amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=0, message=MESSAGE
         )
 
 
 def test_deposit_fee_too_high(token_bridge_wrapper: TokenBridgeWrapper):
     setup_contracts(token_bridge_wrapper=token_bridge_wrapper)
-    base_fee = token_bridge_wrapper.contract.estimateDepositFeeWei.call()
-    too_high_fee = 2 * base_fee + 2 * 10**14
+    too_high_fee = 2 + 10**16
     with pytest.raises(EthRevertException, match="FEE_VALUE_TOO_HIGH"):
         token_bridge_wrapper.deposit(
             amount=DEPOSIT_AMOUNT, l2_recipient=L2_RECIPIENT, fee=too_high_fee

@@ -9,7 +9,7 @@ contract StarknetEthBridge is LegacyBridge {
     using Addresses for address;
 
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarknetEthBridge_2.0_3";
+        return "StarkWare_StarknetEthBridge_2.0_4";
     }
 
     function acceptDeposit(
@@ -19,7 +19,7 @@ contract StarknetEthBridge is LegacyBridge {
         // Make sure msg.value is enough to cover amount. The remaining value is fee.
         require(msg.value >= amount, "INSUFFICIENT_VALUE");
         uint256 fee = msg.value - amount;
-        Fees.checkDepositFee(fee);
+        Fees.checkFee(fee);
         // The msg.value was already credited to this contract. Fee will be passed to Starknet.
         require(address(this).balance - fee <= getMaxTotalBalance(ETH), "MAX_BALANCE_EXCEEDED");
         return fee;
