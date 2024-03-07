@@ -604,14 +604,13 @@ contract StarknetTokenBridge is
         emit DepositReclaimed(_msgSender(), token, amount, l2Recipient, nonce);
     }
 
-
     // EIP2771 related functions
 
     function setTrustedForwarder(address _forwarder) public onlyManager {
         _setTrustedForwarder(_forwarder);
     }
 
-    function versionRecipient() external view override returns (string memory) {
+    function versionRecipient() external pure returns (string memory) {
         return "1";
     }
 }

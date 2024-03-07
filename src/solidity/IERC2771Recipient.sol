@@ -9,13 +9,12 @@ pragma solidity >=0.6.0;
  * @notice It is recommended that your contract inherits from the ERC2771Recipient contract.
  */
 abstract contract IERC2771Recipient {
-
     /**
      * :warning: **Warning** :warning: The Forwarder can have a full control over your Recipient. Only trust verified Forwarder.
      * @param forwarder The address of the Forwarder contract that is being used.
      * @return isTrustedForwarder `true` if the Forwarder is trusted to forward relayed transactions by this Recipient.
      */
-    function isTrustedForwarder(address forwarder) public virtual view returns(bool);
+    function isTrustedForwarder(address forwarder) public view virtual returns (bool);
 
     /**
      * @notice Use this method the contract anywhere instead of msg.sender to support relayed transactions.
@@ -23,7 +22,7 @@ abstract contract IERC2771Recipient {
      * For a call that came through the Forwarder the real sender is extracted from the last 20 bytes of the `msg.data`.
      * Otherwise simply returns `msg.sender`.
      */
-    function _msgSender() internal virtual view returns (address);
+    function _msgSender() internal view virtual returns (address);
 
     /**
      * @notice Use this method in the contract instead of `msg.data` when difference matters (hashing, signature, etc.)
@@ -32,5 +31,5 @@ abstract contract IERC2771Recipient {
      * of the `msg.data` - so this method will strip those 20 bytes off.
      * Otherwise (if the call was made directly and not through the forwarder) simply returns `msg.data`.
      */
-    function _msgData() internal virtual view returns (bytes calldata);
+    function _msgData() internal view virtual returns (bytes calldata);
 }
