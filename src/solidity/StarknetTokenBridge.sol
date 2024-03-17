@@ -9,6 +9,7 @@ import "starkware/solidity/libraries/Transfers.sol";
 import "starkware/solidity/tokens/ERC20/IERC20.sol";
 import "starkware/solidity/tokens/ERC20/IERC20Metadata.sol";
 import "starkware/starknet/solidity/IStarknetMessaging.sol";
+import "src/solidity/ERC2771Recipient.sol";
 import "src/solidity/Fees.sol";
 import "src/solidity/IStarkgateBridge.sol";
 import "src/solidity/IStarkgateManager.sol";
@@ -26,7 +27,8 @@ contract StarknetTokenBridge is
     Identity,
     Fees,
     StarknetTokenStorage,
-    ProxySupport
+    ProxySupport,
+    ERC2771Recipient
 {
     using Addresses for address;
     using Felt252 for string;
@@ -126,7 +128,7 @@ contract StarknetTokenBridge is
     }
 
     modifier onlyManager() {
-        require(manager() == msg.sender, "ONLY_MANAGER");
+        require(manager() == _msgSender(), "ONLY_MANAGER");
         _;
     }
 
@@ -153,7 +155,7 @@ contract StarknetTokenBridge is
         Fees.checkFee(msg.value);
         uint256 currentBalance = IERC20(token).balanceOf(address(this));
         require(currentBalance + amount <= getMaxTotalBalance(token), "MAX_BALANCE_EXCEEDED");
-        Transfers.transferIn(token, msg.sender, amount);
+        Transfers.transferIn(token, _msgSender(), amount);
         return msg.value;
     }
 
@@ -321,10 +323,10 @@ contract StarknetTokenBridge is
         uint256 fee
     ) internal {
         if (selector == HANDLE_TOKEN_DEPOSIT_SELECTOR) {
-            emit Deposit(msg.sender, token, amount, l2Recipient, nonce, fee);
+            emit Deposit(_msgSender(), token, amount, l2Recipient, nonce, fee);
         } else {
             require(selector == HANDLE_DEPOSIT_WITH_MESSAGE_SELECTOR, "UNKNOWN_SELECTOR");
-            emit DepositWithMessage(msg.sender, token, amount, l2Recipient, message, nonce, fee);
+            emit DepositWithMessage(_msgSender(), token, amount, l2Recipient, message, nonce, fee);
         }
     }
 
@@ -340,7 +342,7 @@ contract StarknetTokenBridge is
      */
     function enableWithdrawalLimit(address token) external onlySecurityAgent {
         tokenSettings()[token].withdrawalLimitApplied = true;
-        emit WithdrawalLimitEnabled(msg.sender, token);
+        emit WithdrawalLimitEnabled(_msgSender(), token);
     }
 
     /**
@@ -348,7 +350,7 @@ contract StarknetTokenBridge is
      */
     function disableWithdrawalLimit(address token) external onlySecurityAdmin {
         tokenSettings()[token].withdrawalLimitApplied = false;
-        emit WithdrawalLimitDisabled(msg.sender, token);
+        emit WithdrawalLimitDisabled(_msgSender(), token);
     }
 
     /**
@@ -398,7 +400,7 @@ contract StarknetTokenBridge is
             : N_DEPOSIT_PAYLOAD_ARGS;
         uint256[] memory payload = new uint256[](MESSAGE_OFFSET + message.length);
         payload[0] = uint256(uint160(token));
-        payload[1] = uint256(uint160(msg.sender));
+        payload[1] = uint256(uint160(_msgSender()));
         payload[2] = l2Recipient;
         payload[3] = amount & (UINT256_PART_SIZE - 1);
         payload[4] = amount >> UINT256_PART_SIZE_BITS;
@@ -500,7 +502,7 @@ contract StarknetTokenBridge is
     }
 
     function withdraw(address token, uint256 amount) external {
-        withdraw(token, amount, msg.sender);
+        withdraw(token, amount, _msgSender());
     }
 
     /*
@@ -526,7 +528,7 @@ contract StarknetTokenBridge is
             nonce
         );
 
-        emit DepositCancelRequest(msg.sender, token, amount, l2Recipient, nonce);
+        emit DepositCancelRequest(_msgSender(), token, amount, l2Recipient, nonce);
     }
 
     /*
@@ -553,7 +555,7 @@ contract StarknetTokenBridge is
         );
 
         emit DepositWithMessageCancelRequest(
-            msg.sender,
+            _msgSender(),
             token,
             amount,
             l2Recipient,
@@ -582,8 +584,8 @@ contract StarknetTokenBridge is
             nonce
         );
 
-        transferOutFunds(token, amount, msg.sender);
-        emit DepositWithMessageReclaimed(msg.sender, token, amount, l2Recipient, message, nonce);
+        transferOutFunds(token, amount, _msgSender());
+        emit DepositWithMessageReclaimed(_msgSender(), token, amount, l2Recipient, message, nonce);
     }
 
     function depositReclaim(
@@ -599,7 +601,17 @@ contract StarknetTokenBridge is
             nonce
         );
 
-        transferOutFunds(token, amount, msg.sender);
-        emit DepositReclaimed(msg.sender, token, amount, l2Recipient, nonce);
+        transferOutFunds(token, amount, _msgSender());
+        emit DepositReclaimed(_msgSender(), token, amount, l2Recipient, nonce);
+    }
+
+    // EIP2771 related functions
+
+    function setTrustedForwarder(address _forwarder) public onlyManager {
+        _setTrustedForwarder(_forwarder);
+    }
+
+    function versionRecipient() external pure returns (string memory) {
+        return "1";
     }
 }

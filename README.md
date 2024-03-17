@@ -35,6 +35,10 @@ Note: the frontend implementation of the bridges, can be found [here](https://gi
 
 This project contains scripts written in Python 3.9.
 
+## EIP2771 compliance
+
+We made the L1 bridge EIP2771 compliant by inheriting from [ERC2771Recipient.sol](https://github.com/opengsn/gsn/blob/master/packages/contracts/src/ERC2771Recipient.sol).
+
 
 ## Getting Started
 
