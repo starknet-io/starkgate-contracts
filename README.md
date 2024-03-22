@@ -20,7 +20,7 @@
 
 ## :warning: Disclaimer
 
-:warning: :construction: `Starkgate` with the new cairo version is still a work in progress. Therefore, some parts of the code may be incomplete or undergoing changes, So use it at your own risk.:construction: :warning:
+:warning: :construction: `Starkgate` with the new cairo version is still a work in progress. Therefore, some parts of the code may be incomplete or undergoing changes, So use it at your own risk. :construction: :warning:
 
 ## About
 
