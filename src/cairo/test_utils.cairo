@@ -6,6 +6,7 @@ trait IsValidSignature<TState> {
 
 #[starknet::contract]
 mod TestAccount {
+    use debug::PrintTrait;
     use array::ArrayTrait;
     use array::SpanTrait;
     use ecdsa::check_ecdsa_signature;
@@ -24,7 +25,7 @@ mod TestAccount {
     // External
     //
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl IsValidSignatureImpl of super::IsValidSignature<ContractState> {
         fn is_valid_signature(
             self: @ContractState, hash: felt252, signature: Array<felt252>
@@ -47,7 +48,6 @@ mod TestAccount {
             self: @ContractState, hash: felt252, signature: Span<felt252>
         ) -> bool {
             let valid_length = signature.len() == 2_u32;
-
             if valid_length {
                 check_ecdsa_signature(
                     message_hash: hash,
@@ -400,7 +400,7 @@ mod test_utils {
         //  an internal funciton is being called later.
         starknet::testing::set_contract_address(address: token_test_setup_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
-        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state);
+        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state, caller());
 
         token_test_setup_address
     }
@@ -527,6 +527,8 @@ mod test_utils {
     fn deploy_token_bridge() -> ContractAddress {
         // Set the constructor calldata.
         let mut calldata = ArrayTrait::new();
+        let _caller = caller();
+        _caller.serialize(ref calldata);
         DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
 
         // Set the caller address for all the functions calls (except the constructor).
@@ -584,7 +586,7 @@ mod test_utils {
 
     fn enable_withdrawal_limit(token_bridge_address: ContractAddress, l1_token: EthAddress) {
         let token_bridge = get_token_bridge(:token_bridge_address);
-        let l2_token = token_bridge.get_l2_token(:l1_token);
+        let _l2_token = token_bridge.get_l2_token(:l1_token);
         set_contract_address_as_caller();
         set_caller_as_security_agent(:token_bridge_address);
         let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
@@ -601,7 +603,7 @@ mod test_utils {
 
     fn disable_withdrawal_limit(token_bridge_address: ContractAddress, l1_token: EthAddress) {
         let token_bridge = get_token_bridge(:token_bridge_address);
-        let l2_token = token_bridge.get_l2_token(:l1_token);
+        let _l2_token = token_bridge.get_l2_token(:l1_token);
         set_contract_address_as_caller();
         set_caller_as_security_admin(:token_bridge_address);
         let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
@@ -637,7 +639,7 @@ mod test_utils {
         token_bridge_address: ContractAddress, l1_bridge_address: EthAddress
     ) {
         let orig = get_contract_address();
-        let token_bridge = get_token_bridge(:token_bridge_address);
+        let _token_bridge = get_token_bridge(:token_bridge_address);
 
         set_contract_address_as_caller();
         // Get the token bridge admin interface and set the caller as the app governer (and as App
@@ -709,6 +711,7 @@ mod test_utils {
             account_contract_class_hash, 0, calldata.span(), false
         )
             .unwrap();
+
         account_address
     }
 

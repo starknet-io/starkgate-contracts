@@ -213,7 +213,7 @@ mod test {
         let value = BoundedInt::max();
         let checkpoint = Checkpoint { key, value };
 
-        let (key_and_low, high) = CheckpointStorePacking::pack(checkpoint);
+        let (key_and_low, _) = CheckpointStorePacking::pack(checkpoint);
 
         let expected_key: u256 = (key_and_low.into() / _2_POW_184.into()) & KEY_MASK;
         let expected_low: u256 = key_and_low.into() & LOW_MASK;

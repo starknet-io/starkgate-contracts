@@ -9,7 +9,7 @@ mod EICTestContract {
         upgrade_delay: u64,
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl EICInitializable of IEICInitializable<ContractState> {
         // Adds the value in eic_init_data to the storage variable.
         fn eic_initialize(ref self: ContractState, eic_init_data: Span<felt252>) {
@@ -68,9 +68,6 @@ mod replaceability_test {
     }
 
     fn dummy_implementation_data(final: bool) -> ImplementationData {
-        // Set the eic_init_data calldata.
-        let calldata = array!['dummy', 'arbitrary', 'values'];
-
         ImplementationData {
             impl_hash: get_token_bridge_impl_hash(), eic_data: Option::None(()), final: final
         }

@@ -41,7 +41,7 @@ mod LegacyBridgeTester {
         poseidon::poseidon_hash_span(hash_input.span())
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Replaceable of IReplaceable<ContractState> {
         fn get_upgrade_delay(self: @ContractState) -> u64 {
             self.upgrade_delay.read()

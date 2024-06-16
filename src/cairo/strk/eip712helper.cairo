@@ -9,7 +9,6 @@ const LOCK_AND_DELEGATE_TYPE_HASH: felt252 =
 const DAPP_NAME: felt252 = 'TOKEN_LOCK_AND_DELEGATION';
 const DAPP_VERSION: felt252 = '1.0.0';
 const STARKNET_MESSAGE: felt252 = 'StarkNet Message';
-
 use starknet::{ContractAddress, get_tx_info};
 use openzeppelin::account::interface::{AccountABIDispatcher, AccountABIDispatcherTrait};
 
@@ -35,20 +34,19 @@ fn lock_and_delegate_message_hash(
     nonce: felt252,
     expiry: u64,
 ) -> felt252 {
-    let mut lock_and_delegate_inputs = array![
-        LOCK_AND_DELEGATE_TYPE_HASH,
-        delegatee.into(),
-        amount.low.into(), // 2**128 is good enough here, as the entire supply < 2**94.
-        nonce,
-        expiry.into()
-    ]
-        .span();
-    let lock_and_delegate_hash = pedersen_hash_span(elements: lock_and_delegate_inputs);
-    let mut message_inputs = array![
-        STARKNET_MESSAGE, domain, account.into(), lock_and_delegate_hash
-    ]
-        .span();
+    let input_hash = lock_and_delegate_input_hash(:delegatee, :amount, :nonce, :expiry);
+    let mut message_inputs = array![STARKNET_MESSAGE, domain, account.into(), input_hash].span();
     pedersen_hash_span(elements: message_inputs)
+}
+
+fn lock_and_delegate_input_hash(
+    delegatee: ContractAddress, amount: u256, nonce: felt252, expiry: u64,
+) -> felt252 {
+    let mut lock_and_delegate_inputs = array![
+        LOCK_AND_DELEGATE_TYPE_HASH, delegatee.into(), amount.low.into(), nonce, expiry.into()
+    ]
+        .span();
+    pedersen_hash_span(elements: lock_and_delegate_inputs)
 }
 
 fn calc_domain_hash() -> felt252 {

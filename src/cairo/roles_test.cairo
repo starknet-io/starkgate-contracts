@@ -15,13 +15,13 @@ mod roles_test {
         IAccessControl, IAccessControlDispatcher, IAccessControlDispatcherTrait, RoleId,
         RoleAdminChanged, RoleGranted, RoleRevoked
     };
-
+    use src::erc20_interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use src::test_utils::test_utils::{
         caller, not_caller, set_contract_address_as_caller, pop_and_deserialize_last_event,
         pop_last_k_events, deserialize_event, arbitrary_event, assert_role_granted_event,
         assert_role_revoked_event, validate_empty_event_queue, get_roles, get_access_control,
         deploy_token_bridge, get_token_bridge, deploy_new_token, deploy_new_token_and_deposit,
-        simple_deploy_lockable_token
+        simple_deploy_lockable_token, get_erc20_token,
     };
     use src::roles_interface::{
         APP_GOVERNOR, APP_ROLE_ADMIN, GOVERNANCE_ADMIN, OPERATOR, TOKEN_ADMIN, UPGRADE_GOVERNOR,
@@ -1144,8 +1144,8 @@ mod roles_test {
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
 
         starknet::testing::set_caller_address(address: not_caller());
-        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state);
-        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state);
+        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state, not_caller());
+        TokenBridge::RolesInternal::_initialize_roles(ref token_bridge_state, not_caller());
     }
 
     #[test]

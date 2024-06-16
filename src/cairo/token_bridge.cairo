@@ -267,8 +267,10 @@ mod TokenBridge {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, upgrade_delay: u64) {
-        self._initialize_roles();
+    fn constructor(
+        ref self: ContractState, provisional_governance_admin: ContractAddress, upgrade_delay: u64
+    ) {
+        self._initialize_roles(:provisional_governance_admin);
         self.upgrade_delay.write(upgrade_delay);
         self
             .write_daily_withdrawal_limit_pct(
@@ -373,7 +375,7 @@ mod TokenBridge {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl TokenBridgeAdmin of ITokenBridgeAdmin<ContractState> {
         fn get_erc20_class_hash(self: @ContractState) -> ClassHash {
             self.erc20_class_hash.read()
@@ -438,7 +440,7 @@ mod TokenBridge {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl TokenBridge of ITokenBridge<ContractState> {
         fn get_version(self: @ContractState) -> felt252 {
             CONTRACT_VERSION
@@ -543,7 +545,7 @@ mod TokenBridge {
     }
 
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Replaceable of IReplaceable<ContractState> {
         fn get_upgrade_delay(self: @ContractState) -> u64 {
             self.upgrade_delay.read()
@@ -679,7 +681,7 @@ mod TokenBridge {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl AccessControlImplExternal of IAccessControl<ContractState> {
         fn has_role(self: @ContractState, role: RoleId, account: ContractAddress) -> bool {
             self.role_members.read((role, account))
@@ -754,7 +756,7 @@ mod TokenBridge {
     }
 
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl RolesImpl of IRoles<ContractState> {
         fn is_app_governor(self: @ContractState, account: ContractAddress) -> bool {
             self.has_role(role: APP_GOVERNOR, :account)
@@ -946,8 +948,9 @@ mod TokenBridge {
         //
         // TODO -  This function should be under initialize function under roles contract.
 
-        fn _initialize_roles(ref self: ContractState) {
-            let provisional_governance_admin = get_caller_address();
+        fn _initialize_roles(
+            ref self: ContractState, provisional_governance_admin: ContractAddress
+        ) {
             let un_initialized = self.get_role_admin(role: GOVERNANCE_ADMIN) == 0;
             assert(un_initialized, ALREADY_INITIALIZED);
             self._grant_role(role: GOVERNANCE_ADMIN, account: provisional_governance_admin);

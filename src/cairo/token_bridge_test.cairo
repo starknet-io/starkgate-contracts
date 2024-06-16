@@ -204,7 +204,7 @@ mod token_bridge_test {
     #[available_gas(30000000)]
     #[should_panic(expected: ('TOKEN_CONFIG_MISMATCH',))]
     fn test_failed_handle_deposit_token_not_set() {
-        let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
+        let (l1_bridge_address, _l1_token, _) = get_default_l1_addresses();
         let token_bridge_address = deploy_token_bridge();
         internal_handle_depoist(
             :token_bridge_address, :l1_bridge_address, l2_recipient: initial_owner(), amount: 1
@@ -218,7 +218,7 @@ mod token_bridge_test {
     #[available_gas(30000000)]
     #[should_panic(expected: ('L1_L2_TOKEN_MISMATCH',))]
     fn test_handle_deposit_token_mismatch() {
-        let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
+        let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
 
         let l2_recipient = initial_owner();
         let token_bridge_address = deploy_upgraded_legacy_bridge(
@@ -503,7 +503,7 @@ mod token_bridge_test {
         l2_recipient: ContractAddress,
         amount: u256
     ) {
-        let token_bridge = get_token_bridge(:token_bridge_address);
+        let _token_bridge = get_token_bridge(:token_bridge_address);
         let orig = get_contract_address();
         starknet::testing::set_contract_address(address: token_bridge_address);
         let mut token_bridge_state = TokenBridge::contract_state_for_testing();
@@ -619,17 +619,17 @@ mod token_bridge_test {
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token: l1_token,
-            name: NAME,
-            symbol: SYMBOL,
-            decimals: DECIMALS
+            name: name,
+            symbol: symbol,
+            decimals: decimals
         );
         TokenBridge::handle_token_deployment(
             ref token_bridge_state,
             from_address: l1_bridge_address.into(),
             l1_token: l1_token,
-            name: NAME,
-            symbol: SYMBOL,
-            decimals: DECIMALS
+            name: name,
+            symbol: symbol,
+            decimals: decimals
         );
     }
 
@@ -900,7 +900,7 @@ mod token_bridge_test {
                 low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH
             }
         );
-        let erc20_token = get_erc20_token(:l2_token);
+        let _erc20_token = get_erc20_token(:l2_token);
 
         token_bridge_admin.set_l1_bridge(:l1_bridge_address);
 

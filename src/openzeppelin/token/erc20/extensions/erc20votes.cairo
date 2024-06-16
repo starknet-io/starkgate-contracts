@@ -64,7 +64,7 @@ mod ERC20Votes {
         const INVALID_SIGNATURE: felt252 = 'Votes: invalid signature';
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl VotesImpl of IVotes<ContractState> {
         fn get_votes(self: @ContractState, account: ContractAddress) -> u256 {
             self.ERC20Votes_delegate_checkpoints.read(account).latest()

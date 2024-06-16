@@ -45,7 +45,7 @@ mod Update712EICTester {
         poseidon::poseidon_hash_span(hash_input.span())
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Tester of ITester<ContractState> {
         fn get_dapp_name(self: @ContractState) -> felt252 {
             self.EIP712_name.read()
@@ -55,7 +55,7 @@ mod Update712EICTester {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Replaceable of IReplaceable<ContractState> {
         fn get_upgrade_delay(self: @ContractState) -> u64 {
             self.upgrade_delay.read()

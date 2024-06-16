@@ -16,6 +16,7 @@ mod token_test_setup_interface;
 // Modules.
 mod token_bridge;
 mod legacy_bridge_eic;
+mod set_as_single_eic;
 mod roles_init_eic;
 mod update_712_vars_eic;
 mod err_msg;

@@ -7,7 +7,7 @@ import os
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 EXECUTABLE = os.path.join(ROOT_DIR, ".downloads", "cairo", "bin", "cairo-test")
-EXPECTED_EXECUTABLE_VERSION = "cairo-test 2.3.0"
+EXPECTED_EXECUTABLE_VERSION = "cairo-test 2.6.3"
 
 
 def main():

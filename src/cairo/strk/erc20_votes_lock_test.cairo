@@ -32,7 +32,6 @@ mod lockable_token_test {
 
 
     fn _erc20_votes_lock() -> ContractAddress {
-        let initial_owner = starknet::contract_address_const::<10>();
         let locked_token = starknet::contract_address_const::<20>();
         deploy_votes_lock(:locked_token)
     }
@@ -387,9 +386,6 @@ mod lockable_token_test {
         let (lockable_token, votes_lock_token) = deploy_lock_and_votes_tokens(
             initial_supply: 1000_u256
         );
-        let token_lock_interface = get_token_lock_interface(l2_token: votes_lock_token);
-        let erc20_lockable_interface = get_erc20_token(l2_token: lockable_token);
-        let erc20_votes_lock_interface = get_erc20_token(l2_token: votes_lock_token);
 
         let locked_amount = 1000_u256;
         increase_allowance(
@@ -535,9 +531,7 @@ mod lockable_token_test {
     #[available_gas(30000000)]
     #[should_panic(expected: ('INVALID_CALLER', 'ENTRYPOINT_FAILED',))]
     fn test_invalid_caller_permissioned_lock_and_delegate() {
-        let (lockable_token, votes_lock_token) = deploy_lock_and_votes_tokens(
-            initial_supply: 1000_u256
-        );
+        let (_, votes_lock_token) = deploy_lock_and_votes_tokens(initial_supply: 1000_u256);
 
         // The caller to permissioned_lock_and_delegate should be the lockable token. Since this
         // isn't the case, the call should fail.

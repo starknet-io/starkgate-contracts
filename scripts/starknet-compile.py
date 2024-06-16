@@ -7,7 +7,7 @@ import os
 
 ROOT_DIR = os.path.dirname(os.path.dirname(__file__))
 EXECUTABLE = os.path.join(ROOT_DIR, ".downloads", "cairo", "bin", "starknet-compile")
-EXPECTED_EXECUTABLE_VERSION = "starknet-compile 2.3.0"
+EXPECTED_EXECUTABLE_VERSION = "starknet-compile 2.6.3"
 
 
 def main():

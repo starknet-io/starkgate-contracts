@@ -190,7 +190,7 @@ mod ERC20VotesLock {
     // External
     //
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl MintableLock of IMintableLock<ContractState> {
         fn permissioned_lock_and_delegate(
             ref self: ContractState,
@@ -210,7 +210,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl TokenLock of ITokenLock<ContractState> {
         fn lock(ref self: ContractState, amount: u256) {
             let account = get_caller_address();
@@ -261,7 +261,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Replaceable of IReplaceable<ContractState> {
         fn get_upgrade_delay(self: @ContractState) -> u64 {
             self.upgrade_delay.read()
@@ -356,7 +356,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl AccessControlImplExternal of IAccessControl<ContractState> {
         fn has_role(self: @ContractState, role: RoleId, account: ContractAddress) -> bool {
             self.role_members.read((role, account))
@@ -455,7 +455,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl RolesImpl of IMinimalRoles<ContractState> {
         fn is_governance_admin(self: @ContractState, account: ContractAddress) -> bool {
             self.has_role(role: GOVERNANCE_ADMIN, :account)
@@ -503,7 +503,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl ERC20Impl of IERC20<ContractState> {
         fn name(self: @ContractState) -> felt252 {
             let unsafe_state = ERC20::unsafe_new_contract_state();
@@ -567,7 +567,7 @@ mod ERC20VotesLock {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl ERC20CamelOnlyImpl of IERC20CamelOnly<ContractState> {
         fn totalSupply(self: @ContractState) -> u256 {
             ERC20Impl::total_supply(self)
@@ -617,7 +617,7 @@ mod ERC20VotesLock {
         decrease_allowance(ref self, spender, subtractedValue)
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl VotesImpl of IVotes<ContractState> {
         fn get_votes(self: @ContractState, account: ContractAddress) -> u256 {
             let unsafe_state = ERC20Votes::unsafe_new_contract_state();

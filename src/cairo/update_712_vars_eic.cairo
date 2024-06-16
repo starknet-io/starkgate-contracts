@@ -13,7 +13,7 @@ mod Update712VarsEIC {
         EIP712_version: felt252
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl EICInitializable of IEICInitializable<ContractState> {
         fn eic_initialize(ref self: ContractState, eic_init_data: Span<felt252>) {
             assert(eic_init_data.len() == 0, 'NO_EIC_INIT_DATA_EXPECTED');

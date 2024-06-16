@@ -178,7 +178,7 @@ mod ERC20 {
     // External
     //
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl MintableToken of IMintableToken<ContractState> {
         fn permissioned_mint(ref self: ContractState, account: ContractAddress, amount: u256) {
             assert(get_caller_address() == self.permitted_minter.read(), AccessErrors::ONLY_MINTER);
@@ -190,7 +190,7 @@ mod ERC20 {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl MintableTokenCamelImpl of IMintableTokenCamel<ContractState> {
         fn permissionedMint(ref self: ContractState, account: ContractAddress, amount: u256) {
             MintableToken::permissioned_mint(ref self, account, amount);
@@ -245,7 +245,7 @@ mod ERC20 {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl Replaceable of IReplaceable<ContractState> {
         fn get_upgrade_delay(self: @ContractState) -> u64 {
             self.upgrade_delay.read()
@@ -340,7 +340,7 @@ mod ERC20 {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl AccessControlImplExternal of IAccessControl<ContractState> {
         fn has_role(self: @ContractState, role: RoleId, account: ContractAddress) -> bool {
             self.role_members.read((role, account))
@@ -414,7 +414,7 @@ mod ERC20 {
         }
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl RolesImpl of IMinimalRoles<ContractState> {
         fn is_governance_admin(self: @ContractState, account: ContractAddress) -> bool {
             self.has_role(role: GOVERNANCE_ADMIN, :account)
@@ -467,7 +467,7 @@ mod ERC20 {
     // External
     //
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl ERC20Impl of IERC20<ContractState> {
         /// Returns the name of the token.
         fn name(self: @ContractState) -> felt252 {
@@ -554,7 +554,7 @@ mod ERC20 {
         self._decrease_allowance(spender, subtracted_value)
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl ERC20CamelOnlyImpl of IERC20CamelOnly<ContractState> {
         /// Camel case support.
         /// See [total_supply](total-supply).

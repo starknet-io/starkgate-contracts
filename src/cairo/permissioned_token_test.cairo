@@ -91,6 +91,10 @@ mod permissioned_token_test {
         starknet::testing::set_contract_address(permitted_minter);
         let mint_recipient = starknet::contract_address_const::<1337>();
         mintable_token.permissioned_mint(account: mint_recipient, amount: 1);
+        let max_u255 = u256 {
+            low: 0xffffffffffffffffffffffffffffffff, high: 0x7fffffffffffffffffffffffffffffff
+        };
+        mintable_token.permissioned_mint(account: mint_recipient, amount: max_u255);
     }
 
     #[test]

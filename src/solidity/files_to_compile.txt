@@ -12,4 +12,5 @@ starkware/solidity/test_contracts/TestERC20.sol
 starkware/solidity/upgrade/Proxy.sol
 starkware/starknet/testing/MockStarknetMessaging.sol
 src/solidity/StarkgateUpgradeAssistExternalInitializer.sol
+src/solidity/ConfigureSingleBridgeEIC.sol
 src/solidity/test_contracts/TestFees.sol

@@ -32,5 +32,6 @@ mod TokenTestSetup {
         let result = starknet::replace_class_syscall(
             TokenBridge::TEST_CLASS_HASH.try_into().unwrap()
         );
+        assert(result.is_ok(), 'REPLACE_CLASS_HASH_FAILED');
     }
 }

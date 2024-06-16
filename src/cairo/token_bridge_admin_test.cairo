@@ -573,7 +573,7 @@ mod token_bridge_admin_test {
         );
 
         // Limit the withdrawal amount.
-        let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+        let _token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
         set_contract_address_as_caller();
         enable_withdrawal_limit(:token_bridge_address, :l1_token);
 

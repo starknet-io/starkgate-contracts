@@ -41,7 +41,7 @@ mod LegacyBridgeUpgradeEIC {
         RoleAdminChanged: RoleAdminChanged,
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl EICInitializable of IEICInitializable<ContractState> {
         // Sets up the values needed in the legacy l2 bridge upgrade:
         // 1. Roles (governance) setup

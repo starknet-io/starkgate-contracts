@@ -16,6 +16,15 @@ mod lockable_token_test {
         ILockAndDelegate, ILockAndDelegateDispatcher, ILockAndDelegateDispatcherTrait
     };
 
+    // The account address is taken into account in eip-712 signature.
+    // So, if it changes, signature fixture are invalidated and have to be replaced.
+    // This fixture helps identifying this right away.
+    fn expected_account_address() -> ContractAddress {
+        starknet::contract_address_const::<
+            0x64197b5827b3c126bfa2dafc484f220b7a5d8d35ebabfdcffa6370b262fa643
+        >()
+    }
+
     fn deploy_testing_lockable_token() -> ContractAddress {
         let initial_owner = initial_owner();
         deploy_lockable_token(:initial_owner, initial_supply: 1000_u256)
@@ -198,14 +207,15 @@ mod lockable_token_test {
         1000_u256
     }
 
+    // Signifanct other of the number 0x52656d6f20746865206d657263696c657373 .
     fn get_account_public_key() -> felt252 {
-        0x76cee175ab9a015f17483e3ff0e0c21cbd4202b4e86519d9c1c0ae8514dd6a7
+        0x890324441c151f11fc60046f5db3014faf0e7ec427797bead23e279e0604a2
     }
 
     fn get_delegation_sig() -> Array<felt252> {
         array![
-            0x2cf06c32eb38ca5b1b0247d033bc479c6eb116fc7be0030061f40699d7b0f78,
-            0x6db05d0eeac27827f777e625ca194276e86867f0e987f5669613afcdced2ba2
+            0x341ec075225ded67c66680e4226e1c4ad261074df0434af59720b0117086e17,
+            0x767ef0ec64bde505563961eba498fffef6b55201e0e4db7d6e2e51ee7d3a6fd
         ]
     }
 
@@ -233,6 +243,7 @@ mod lockable_token_test {
 
         // Account setup.
         let account_address = deploy_account(public_key: get_account_public_key());
+        assert(account_address == expected_account_address(), 'ACCOUNT_ADDRESS_CHANGED');
 
         // Lockable token contract setup.
         let (lockable_token, votes_lock_token) = deploy_lock_and_votes_tokens_with_owner(
@@ -297,6 +308,7 @@ mod lockable_token_test {
 
         // Account setup.
         let account_address = deploy_account(public_key: get_account_public_key());
+        assert(account_address == expected_account_address(), 'ACCOUNT_ADDRESS_CHANGED');
 
         // Lockable token contract setup.
         let (lockable_token, votes_lock_token) = deploy_lock_and_votes_tokens_with_owner(
@@ -337,6 +349,7 @@ mod lockable_token_test {
 
         // Account setup.
         let account_address = deploy_account(public_key: get_account_public_key());
+        assert(account_address == expected_account_address(), 'ACCOUNT_ADDRESS_CHANGED');
 
         // Lockable token contract setup.
         let (lockable_token, votes_lock_token) = deploy_lock_and_votes_tokens_with_owner(
