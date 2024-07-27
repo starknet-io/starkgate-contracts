@@ -44,7 +44,7 @@ To run the scripts in this project, you'll need Python 3.9 installed on your sys
 
 Make sure you have the following installed:
 
-- Python 3.9: [Download Python](https://www.python.org/downloads/)
+- Python 3.12.4: [Download Python](https://www.python.org/downloads/)
 
 ### Setting up the Virtual Environment
 
@@ -57,7 +57,7 @@ cd project-directory
 
 Create a virtual environment using venv:
 ```bash
-python3.9 -m venv venv
+python3.12.4 -m venv venv
 ```
 
 Activate the virtual environment:
