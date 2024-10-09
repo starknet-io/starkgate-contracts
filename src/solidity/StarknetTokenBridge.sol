@@ -91,7 +91,7 @@ contract StarknetTokenBridge is
     uint256 constant DEPOSIT_MESSAGE_FIXED_SIZE = 1;
 
     function identify() external pure virtual returns (string memory) {
-        return "StarkWare_StarknetTokenBridge_2.0_4";
+        return "StarkWare_StarknetTokenBridge_2.0_5";
     }
 
     function validateInitData(bytes calldata data) internal view virtual override {

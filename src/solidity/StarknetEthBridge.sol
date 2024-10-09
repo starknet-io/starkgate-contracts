@@ -9,7 +9,7 @@ contract StarknetEthBridge is LegacyBridge {
     using Addresses for address;
 
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarknetEthBridge_2.0_4";
+        return "StarkWare_StarknetEthBridge_2.0_5";
     }
 
     function acceptDeposit(

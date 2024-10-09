@@ -129,6 +129,11 @@ abstract contract LegacyBridge is StarknetTokenBridge, OverrideLegacyProxyGovern
             payload[2] = amount_low;
             payload[3] = amount_high;
             messagingContract().consumeMessageFromL2(l2TokenBridge(), payload);
+
+            // The old msg format is valid only for the legacy bridged token.
+            // Since the withdraw flow can be token-explicit with any token,
+            // we must enforce that the token is identical to the legacy token.
+            require(bridgedToken() == token, "NOT_LEGACY_BRIDGED_TOKEN");
         }
     }
 

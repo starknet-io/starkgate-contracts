@@ -5,6 +5,6 @@ import "src/solidity/LegacyBridge.sol";
 
 contract StarknetERC20Bridge is LegacyBridge {
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarknetERC20Bridge_2.0_4";
+        return "StarkWare_StarknetERC20Bridge_2.0_5";
     }
 }
