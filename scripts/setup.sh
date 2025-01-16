@@ -30,8 +30,14 @@ printf "${COLOR_OFF}"
 mkdir -p .downloads
 cd .downloads
 
-wget -c https://github.com/starkware-libs/cairo/releases/download/v2.10.0-rc.0/release-x86_64-unknown-linux-musl.tar.gz -O - | tar -xz
-curl https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.20+commit.a1b79de6 -o solc-0.8.20 && chmod +x solc-0.8.20
+if [ "$(uname)" == "Darwin" ]; then
+    # Do something under Mac OS X platform        
+    wget -c https://github.com/starkware-libs/cairo/releases/download/v2.10.0-rc.0/release-aarch64-apple-darwin.tar -O - | tar -xz
+    curl https://binaries.soliditylang.org/linux-amd64/solc-macos-amd64-v0.8.20+commit.a1b79de6 -o solc-0.8.20 && chmod +x solc-0.8.20
+else
+    wget -c https://github.com/starkware-libs/cairo/releases/download/v2.10.0-rc.0/release-x86_64-unknown-linux-musl.tar.gz -O - | tar -xz
+    curl https://binaries.soliditylang.org/linux-amd64/solc-linux-amd64-v0.8.20+commit.a1b79de6 -o solc-0.8.20 && chmod +x solc-0.8.20
+fi
 
 cd ..
 rm -rf starkware
