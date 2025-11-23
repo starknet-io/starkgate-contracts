@@ -1,5 +1,30 @@
 {
-  "parser": "solidity-parse",
-  "compiler": "0.8.20",
-  "printWidth": 100
+  // Optimized Configuration for Solidity Formatting (e.g., in .prettierrc)
+
+  // --- Parser Configuration ---
+  // Specifies the parser to use for the Solidity language.
+  "parser": "solidity", 
+  
+  // NOTE: The compiler version is often used by the formatter to enforce version-specific rules.
+  "compiler": "0.8.20", 
+
+  // --- Code Style Rules ---
+  
+  // Maximum line length before Prettier wraps the code.
+  "printWidth": 100, 
+
+  // Use spaces instead of tabs for indentation.
+  "useTabs": false, 
+  
+  // Specify the number of spaces per indentation level.
+  "tabWidth": 4, 
+
+  // Print semicolons at the ends of statements.
+  "semi": true, 
+
+  // Use single quotes instead of double quotes where possible (e.g., strings).
+  "singleQuote": false, 
+
+  // How to handle bracket spacing in object literals (e.g., { foo: bar } vs {foo: bar}).
+  "bracketSpacing": true 
 }
