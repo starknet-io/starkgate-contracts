@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "packages/sg_token",
+    "packages/bridge",
+    "packages/strk",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024_07"
+
+[workspace.dependencies]
+starknet = "2.15.1"
+openzeppelin = "3.0.0"
+openzeppelin_interfaces = "2.1.0"
+starkware_utils = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "main" }
+snforge_std = "0.55.0"
+assert_macros = "2.15.1"
+
+[dev-dependencies]
+cairo_test = "2.15.1"
+
+[workspace.tool.fmt]
+sort-module-level-items = true
+
+[workspace.scripts]
+test = "snforge test"
+
+[workspace.tool.scarb]
+allow-prebuilt-plugins = ["snforge_std"]

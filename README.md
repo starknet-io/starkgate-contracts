@@ -1,0 +1,106 @@
+<div align="center">
+
+![starkgate](https://github.com/starknet-io/starkgate-contracts/assets/88274280/1e8d90ee-c06b-42c5-8451-601bc8570223)
+[![License: Apache2.0](https://img.shields.io/badge/License-Apache2.0-green.svg)](LICENSE)
+</div>
+
+
+<details open="open">
+<summary>Table of Contents</summary>
+
+- [:warning: Disclaimer](#warning-disclaimer)
+- [About](#about)
+- [Getting Started](#getting-started)
+- [Security](#security)
+- [License](#license)
+
+</details>
+
+---
+
+## :warning: Disclaimer
+
+:warning: :construction: `Starkgate` with the new cairo version is still a work in progress. Therefore, some parts of the code may be incomplete or undergoing changes, So use it at your own risk.:construction: :warning:
+
+## About
+
+`Starkgate` is the home for Starknet's L1 bridges.
+
+This repository contains the Cairo and Solidity code for the L1<>L2 bridges of Starknet,
+as well as Starknet's ERC20 token contract implementation that interacts with the bridges.
+
+This project contains scripts written in Python 3.9.
+
+
+## Getting Started
+
+To run the scripts in this project, you'll need Python 3.9 installed on your system. It's recommended to use a virtual environment to manage your Python dependencies.
+
+### Prerequisites
+
+Make sure you have the following installed:
+
+- Python 3.9: [Download Python](https://www.python.org/downloads/)
+
+### Setting up the Virtual Environment
+
+1. Clone the repository or download the source code.
+2. Open a terminal or command prompt and navigate to the project directory.
+
+```bash
+cd project-directory
+```
+
+Create a virtual environment using venv:
+```bash
+python3.9 -m venv venv
+```
+
+Activate the virtual environment:
+
+```bash
+source venv/bin/activate
+```
+
+#### Installing Dependencies
+
+Once you have activated the virtual environment, install the project dependencies using pip and the requirements.txt file:
+
+```bash
+pip install -r requirements.txt
+```
+
+#### Running the Setup Script
+Before running the main scripts, you need to run the setup.sh script to perform additional setup steps. To run the script, use the following command:
+
+```bash
+scripts/setup.sh
+```
+
+#### Running the Scripts
+With the virtual environment activated and the dependencies installed, you're ready to run the scripts. Use the following command:
+
+```bash
+# Build cairo contracts.
+scarb build
+# Build solidity contracts.
+scripts/build-solidity.sh
+# Running Solidity tests.
+scripts/tests.sh
+# Running Cairo tests.
+scarb test
+```
+
+
+## Security
+
+StarkGate follows good practices of security, but 100% security cannot be assured.
+StarkGate is provided "as is" without any warranty. Use at your own risk.
+
+_For more information and to report security issues, please refer to our [security documentation](SECURITY.md)._
+## License
+
+This project is licensed under the **Apache 2.0 license**.
+
+See [LICENSE](LICENSE) for more information.
+

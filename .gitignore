@@ -1,0 +1,9 @@
+__pycache__
+.downloads/
+.spr.yml
+.vscode/
+venv/
+artifacts/
+starkware/
+target/
+third_party/

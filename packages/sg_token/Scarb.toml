@@ -1,0 +1,19 @@
+[package]
+name = "sg_token"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+openzeppelin_interfaces.workspace = true
+starkware_utils.workspace = true
+
+[dev-dependencies]
+assert_macros.workspace = true
+cairo_test = "2.15.1"
+
+[lib]
+
+[[target.starknet-contract]]
+sierra = true

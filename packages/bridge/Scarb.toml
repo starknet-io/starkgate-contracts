@@ -1,0 +1,18 @@
+[package]
+name = "bridge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+openzeppelin_interfaces.workspace = true
+starkware_utils.workspace = true
+
+[dev-dependencies]
+assert_macros.workspace = true
+cairo_test = "2.15.1"
+sg_token = { path = "../sg_token" }
+
+[[target.starknet-contract]]
+sierra = true

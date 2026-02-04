@@ -1,0 +1,38 @@
+name: release
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+    release:
+        name: Publish for ${{ matrix.os }}
+        runs-on: ${{ matrix.os }}
+        strategy:
+            matrix:
+              include:
+                - os: ubuntu-latest
+                  artifact_name: x86_64-unknown-linux-musl.tar.gz
+                  asset_name: release-x86_64-unknown-linux-musl.tar.gz
+                  target: x86_64-unknown-linux-musl
+        steps:
+            - uses: actions/checkout@v3
+            - name: Install musl
+              run: |
+                if [ "${{ matrix.target }}" == "x86_64-unknown-linux-musl" ]
+                then
+                  sudo apt-get install -y musl-tools
+                fi
+            - name: Setup...
+              run: scripts/setup.sh
+            - name: Build in ${{ matrix.target }}
+              run: ./scripts/release_tar.sh ${{ matrix.target }}
+            - name: Upload binaries to release
+              uses: svenstaro/upload-release-action@v2
+              with:
+                repo_token: ${{ secrets.GITHUB_TOKEN }}
+                file: target/${{ matrix.artifact_name }}
+                asset_name: ${{ matrix.asset_name }}
+                tag: ${{ github.ref }}
+                overwrite: true
+                body: "Starkgate."

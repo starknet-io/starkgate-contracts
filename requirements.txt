@@ -1,0 +1,5 @@
+black==24.10.0
+cairo-lang==0.11.2
+web3==5.31.3
+pytest==7.4.4
+sympy==1.12
