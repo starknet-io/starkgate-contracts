@@ -4,7 +4,7 @@
 use bridge::interfaces::{ITokenBridgeAdminDispatcher, ITokenBridgeAdminDispatcherTrait};
 use starknet::EthAddress;
 use super::test_utils::{
-    caller, deploy_token_bridge, get_default_l1_addresses, get_token_bridge_admin, not_caller,
+    CALLER, NOT_CALLER, deploy_token_bridge, get_default_l1_addresses, get_token_bridge_admin,
     set_caller_as_app_role_admin_app_governor, set_contract_address_as_not_caller,
     stock_erc20_class_hash,
 };
@@ -77,8 +77,8 @@ fn test_set_erc20_class_hash() {
 fn test_set_l2_token_gov() {
     let token_bridge_address = deploy_token_bridge();
     set_caller_as_app_role_admin_app_governor(:token_bridge_address);
-    let _caller = caller();
-    let _not_caller = not_caller();
+    let _caller = CALLER;
+    let _not_caller = NOT_CALLER;
 
     let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
     token_bridge_admin.set_l2_token_governance(l2_token_governance: _not_caller);
@@ -106,7 +106,7 @@ fn test_missing_role_set_l2_token_gov() {
     let token_bridge = deploy_and_prepare();
 
     set_contract_address_as_not_caller();
-    token_bridge.set_l2_token_governance(caller());
+    token_bridge.set_l2_token_governance(CALLER);
 }
 
 #[test]

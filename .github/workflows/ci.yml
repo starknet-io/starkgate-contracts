@@ -16,6 +16,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.15.1"
+
+      - uses: foundry-rs/setup-snfoundry@v3
+        with:
+          starknet-foundry-version: "0.55.0"
+
       - uses: actions/setup-python@v4
         with:
           python-version: '3.9'

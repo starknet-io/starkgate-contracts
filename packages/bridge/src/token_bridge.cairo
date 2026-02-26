@@ -1,4 +1,4 @@
-//! SPDX-License-Identifier: MIT
+//! SPDX-License-Identifier: Apache-2.0.
 //!
 //! # Token Bridge
 //!
@@ -47,6 +47,15 @@ pub mod TokenBridge {
     const DEFAULT_UPGRADE_DELAY: u64 = 0;
     const REMAINING_QUOTA_OFFSET: u256 = 1;
 
+    /// Tracks locked amount per L1 token with opt-in monitoring.
+    /// - monitoring_enabled: if false, locked amount checks are skipped (legacy behavior)
+    /// - amount: the tracked locked amount when monitoring is enabled
+    #[derive(Copy, Drop, Serde, starknet::Store, PartialEq, Debug)]
+    pub struct LockedAmount {
+        pub amount: u256,
+        pub monitoring_enabled: bool,
+    }
+
     // Components
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -86,7 +95,7 @@ pub mod TokenBridge {
         // --- Legacy (for upgraded bridges) ---
         l2_token: ContractAddress,
         // --- L1 Locked Amount ---
-        l1_locked_amount: Map<EthAddress, u256>,
+        l1_locked_amount: Map<EthAddress, LockedAmount>,
     }
 
     #[event]
@@ -113,6 +122,7 @@ pub mod TokenBridge {
         DeployHandled: DeployHandled,
         WithdrawalLimitEnabled: WithdrawalLimitEnabled,
         WithdrawalLimitDisabled: WithdrawalLimitDisabled,
+        LockedAmountMonitoringEnabled: LockedAmountMonitoringEnabled,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -201,6 +211,13 @@ pub mod TokenBridge {
         sender: ContractAddress,
         #[key]
         l1_token: EthAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    struct LockedAmountMonitoringEnabled {
+        #[key]
+        l1_token: EthAddress,
+        amount: u256,
     }
 
     pub mod Errors {
@@ -300,6 +317,27 @@ pub mod TokenBridge {
             let sender = get_caller_address();
             self.emit(WithdrawalLimitDisabled { sender, l1_token });
         }
+
+        fn enable_locked_amount_monitoring(
+            ref self: ContractState, l1_token: EthAddress, locked_amount: u256,
+        ) {
+            self.roles.only_app_governor();
+
+            let l2_token = self.l1_l2_token_map.read(l1_token);
+            assert(l2_token.is_non_zero(), Errors::TOKEN_NOT_IN_BRIDGE);
+
+            let amount = if locked_amount == 0 {
+                IERC20Dispatcher { contract_address: l2_token }.total_supply()
+            } else {
+                locked_amount
+            };
+
+            self
+                .l1_locked_amount
+                .write(l1_token, LockedAmount { monitoring_enabled: true, amount });
+
+            self.emit(LockedAmountMonitoringEnabled { l1_token, amount });
+        }
     }
 
     #[abi(embed_v0)]
@@ -364,9 +402,18 @@ pub mod TokenBridge {
                 self.consume_withdrawal_quota(:l1_token, amount_to_withdraw: amount);
             }
 
-            let l1_locked_amount = self.l1_locked_amount.read(l1_token);
-            assert(l1_locked_amount >= amount, Errors::WITHDRAWAL_LIMIT_EXCEEDED);
-            self.l1_locked_amount.write(l1_token, l1_locked_amount - amount);
+            let LockedAmount {
+                monitoring_enabled, amount: locked_amount,
+            } = self.l1_locked_amount.read(l1_token);
+            if monitoring_enabled {
+                assert(locked_amount >= amount, Errors::WITHDRAWAL_LIMIT_EXCEEDED);
+                self
+                    .l1_locked_amount
+                    .write(
+                        l1_token,
+                        LockedAmount { monitoring_enabled: true, amount: locked_amount - amount },
+                    );
+            }
 
             // Burn tokens
             IMintableTokenDispatcher { contract_address: l2_token }
@@ -493,6 +540,9 @@ pub mod TokenBridge {
         self.l1_l2_token_map.write(l1_token, deployed_l2_token);
         self.l2_l1_token_map.write(deployed_l2_token, l1_token);
 
+        // Initialize locked amount monitoring for new tokens
+        self.l1_locked_amount.write(l1_token, LockedAmount { monitoring_enabled: true, amount: 0 });
+
         self.emit(DeployHandled { l1_token, name, symbol, decimals });
     }
 
@@ -519,8 +569,17 @@ pub mod TokenBridge {
             let l2_token = self.l1_l2_token_map.read(l1_token);
             assert(l2_token.is_non_zero(), Errors::TOKEN_NOT_IN_BRIDGE);
 
-            let l1_locked_amount = self.l1_locked_amount.read(l1_token);
-            self.l1_locked_amount.write(l1_token, l1_locked_amount + amount);
+            let LockedAmount {
+                monitoring_enabled, amount: locked_amount,
+            } = self.l1_locked_amount.read(l1_token);
+            if monitoring_enabled {
+                self
+                    .l1_locked_amount
+                    .write(
+                        l1_token,
+                        LockedAmount { monitoring_enabled: true, amount: locked_amount + amount },
+                    );
+            }
 
             IMintableTokenDispatcher { contract_address: l2_token }
                 .permissioned_mint(account: l2_recipient, :amount);
@@ -578,7 +637,7 @@ pub mod TokenBridge {
         };
         use core::num::traits::Bounded;
         use openzeppelin_interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-        use starknet::storage::StorageMapReadAccess;
+        use starknet::storage::{StorageMapReadAccess, StorageMapWriteAccess};
         use starknet::syscalls::deploy_syscall;
         use starknet::{ClassHash, ContractAddress, EthAddress, get_contract_address};
         use starkware_utils::components::roles::interface::{
@@ -652,8 +711,8 @@ pub mod TokenBridge {
             #[constructor]
             fn constructor(
                 ref self: ContractState,
-                _name: felt252,
-                _symbol: felt252,
+                name: ByteArray,
+                symbol: ByteArray,
                 _decimals: u8,
                 _initial_supply: u256,
                 _initial_recipient: ContractAddress,
@@ -661,9 +720,7 @@ pub mod TokenBridge {
                 governance_admin: ContractAddress,
                 _upgrade_delay: u64,
             ) {
-                // Use placeholder names for testing - felt252 can't be easily converted to
-                // ByteArray
-                self.erc20.initializer(name: "Token", symbol: "TKN");
+                self.erc20.initializer(:name, :symbol);
                 self.permitted_minter.write(permitted_minter);
                 self.roles.initialize(:governance_admin);
             }
@@ -731,26 +788,17 @@ pub mod TokenBridge {
         const EXPECTED_CONTRACT_IDENTITY: felt252 = 'STARKGATE';
         const EXPECTED_CONTRACT_VERSION: felt252 = 2;
 
-        // ==================== Address Helpers ====================
+        // ==================== Address Constants ====================
 
-        fn caller() -> ContractAddress {
-            15.try_into().unwrap()
-        }
-
-        fn not_caller() -> ContractAddress {
-            16.try_into().unwrap()
-        }
-
-        fn initial_owner() -> ContractAddress {
-            17.try_into().unwrap()
-        }
+        const CALLER: ContractAddress = 15.try_into().unwrap();
+        const NOT_CALLER: ContractAddress = 16.try_into().unwrap();
+        const INITIAL_OWNER: ContractAddress = 17.try_into().unwrap();
+        const DEFAULT_AMOUNT: u256 = u256 {
+            low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH,
+        };
 
         fn set_contract_address_as_caller() {
-            starknet::testing::set_contract_address(caller());
-        }
-
-        fn default_amount() -> u256 {
-            u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
+            starknet::testing::set_contract_address(CALLER);
         }
 
         fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
@@ -791,12 +839,12 @@ pub mod TokenBridge {
 
         fn deploy_token_bridge() -> ContractAddress {
             let mut calldata: Array<felt252> = array![];
-            let _caller = caller();
+            let _caller = CALLER;
             _caller.serialize(ref calldata);
             DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
 
             set_contract_address_as_caller();
-            starknet::testing::set_caller_address(caller());
+            starknet::testing::set_caller_address(CALLER);
 
             let class_hash: ClassHash = super::super::TokenBridge::TEST_CLASS_HASH
                 .try_into()
@@ -808,18 +856,18 @@ pub mod TokenBridge {
 
         fn set_caller_as_app_role_admin_app_governor(token_bridge_address: ContractAddress) {
             let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-            token_bridge_roles.register_app_role_admin(account: caller());
-            token_bridge_roles.register_app_governor(account: caller());
+            token_bridge_roles.register_app_role_admin(account: CALLER);
+            token_bridge_roles.register_app_governor(account: CALLER);
         }
 
         fn set_caller_as_security_agent(token_bridge_address: ContractAddress) {
             let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-            token_bridge_roles.register_security_agent(account: caller());
+            token_bridge_roles.register_security_agent(account: CALLER);
         }
 
         fn set_caller_as_security_admin(token_bridge_address: ContractAddress) {
             let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-            token_bridge_roles.register_security_admin(account: caller());
+            token_bridge_roles.register_security_admin(account: CALLER);
         }
 
         fn prepare_bridge_for_deploy_token(
@@ -833,7 +881,7 @@ pub mod TokenBridge {
 
             token_bridge_admin.set_l1_bridge(:l1_bridge_address);
             token_bridge_admin.set_erc20_class_hash(erc20_class_hash: stock_erc20_class_hash());
-            token_bridge_admin.set_l2_token_governance(l2_token_governance: caller());
+            token_bridge_admin.set_l2_token_governance(l2_token_governance: CALLER);
 
             starknet::testing::set_contract_address(orig);
         }
@@ -1054,7 +1102,10 @@ pub mod TokenBridge {
                 decimals: DECIMALS,
             );
 
-            assert_eq!(token_bridge_state.l1_locked_amount.read(l1_token), 0);
+            assert_eq!(
+                token_bridge_state.l1_locked_amount.read(l1_token),
+                super::LockedAmount { monitoring_enabled: true, amount: 0 },
+            );
 
             let l2_token = token_bridge.get_l2_token(:l1_token);
             // Verify the token was deployed correctly
@@ -1121,8 +1172,8 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
             let token_bridge_address = deploy_token_bridge();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
-            let l2_recipient = initial_owner();
-            let first_amount = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let first_amount = DEFAULT_AMOUNT;
 
             deploy_new_token_and_deposit(
                 :token_bridge_address,
@@ -1134,7 +1185,10 @@ pub mod TokenBridge {
             );
 
             let mut token_bridge_state = super::contract_state_for_testing();
-            assert_eq!(token_bridge_state.l1_locked_amount.read(l1_token), first_amount);
+            assert_eq!(
+                token_bridge_state.l1_locked_amount.read(l1_token),
+                super::LockedAmount { monitoring_enabled: true, amount: first_amount },
+            );
 
             starknet::testing::set_contract_address(token_bridge_address);
 
@@ -1153,7 +1207,10 @@ pub mod TokenBridge {
             assert_l2_account_balance(
                 :token_bridge_address, :l1_token, owner: l2_recipient, amount: total_amount,
             );
-            assert_eq!(token_bridge_state.l1_locked_amount.read(l1_token), total_amount);
+            assert_eq!(
+                token_bridge_state.l1_locked_amount.read(l1_token),
+                super::LockedAmount { monitoring_enabled: true, amount: total_amount },
+            );
             // Event emission is verified implicitly by the state changes above.
         }
 
@@ -1163,7 +1220,7 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
             let token_bridge_address = deploy_token_bridge();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
-            let l2_recipient = initial_owner();
+            let l2_recipient = INITIAL_OWNER;
 
             deploy_new_token(:token_bridge_address, :l1_bridge_address, :l1_token);
 
@@ -1180,7 +1237,7 @@ pub mod TokenBridge {
                 :l1_token,
                 :depositor,
                 :l2_recipient,
-                amount: default_amount(),
+                amount: DEFAULT_AMOUNT,
             );
         }
 
@@ -1189,8 +1246,8 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
             let token_bridge_address = deploy_token_bridge();
-            let l2_recipient = initial_owner();
-            let amount_to_deposit = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let amount_to_deposit = DEFAULT_AMOUNT;
 
             deploy_new_token_and_deposit(
                 :token_bridge_address,
@@ -1218,8 +1275,8 @@ pub mod TokenBridge {
             let l1_recipient: EthAddress = 0.try_into().unwrap();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
             let token_bridge_address = deploy_token_bridge();
-            let l2_recipient = initial_owner();
-            let amount_to_deposit = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let amount_to_deposit = DEFAULT_AMOUNT;
 
             deploy_new_token_and_deposit(
                 :token_bridge_address,
@@ -1245,8 +1302,8 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
             let token_bridge_address = deploy_token_bridge();
-            let l2_recipient = initial_owner();
-            let amount_to_deposit = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let amount_to_deposit = DEFAULT_AMOUNT;
 
             deploy_new_token_and_deposit(
                 :token_bridge_address,
@@ -1268,8 +1325,8 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, l1_recipient) = get_default_l1_addresses();
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
             let token_bridge_address = deploy_token_bridge();
-            let l2_recipient = initial_owner();
-            let amount_to_deposit = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let amount_to_deposit = DEFAULT_AMOUNT;
 
             deploy_new_token_and_deposit(
                 :token_bridge_address,
@@ -1297,8 +1354,8 @@ pub mod TokenBridge {
                 'remaining_withdraw_quota Error',
             );
 
-            let l2_recipient = initial_owner();
-            let amount_to_deposit = default_amount();
+            let l2_recipient = INITIAL_OWNER;
+            let amount_to_deposit = DEFAULT_AMOUNT;
             deploy_new_token_and_deposit(
                 :token_bridge_address,
                 :l1_bridge_address,
@@ -1330,7 +1387,7 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
             let token_bridge_address = deploy_token_bridge();
             let stub_msg_receiver_address = deploy_stub_msg_receiver();
-            let amount_to_deposit = default_amount();
+            let amount_to_deposit = DEFAULT_AMOUNT;
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
 
             let mut message = array![];
@@ -1362,7 +1419,7 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
             let token_bridge_address = deploy_token_bridge();
             let stub_msg_receiver_address = deploy_stub_msg_receiver();
-            let amount_to_deposit = default_amount();
+            let amount_to_deposit = DEFAULT_AMOUNT;
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
 
             let mut message = array![];
@@ -1386,7 +1443,7 @@ pub mod TokenBridge {
             let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
             let token_bridge_address = deploy_token_bridge();
             let stub_msg_receiver_address = deploy_stub_msg_receiver();
-            let amount_to_deposit = default_amount();
+            let amount_to_deposit = DEFAULT_AMOUNT;
             let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
 
             let mut message = array![];
@@ -1401,6 +1458,90 @@ pub mod TokenBridge {
                 :amount_to_deposit,
                 :depositor,
                 message: message_span,
+            );
+        }
+
+        // ==================== Locked Amount Monitoring Tests ====================
+
+        #[test]
+        fn test_enable_locked_amount_monitoring_with_zero_uses_supply() {
+            let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
+            let token_bridge_address = deploy_token_bridge();
+            let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
+            let l2_recipient = INITIAL_OWNER;
+            let amount = DEFAULT_AMOUNT;
+
+            // Deploy token and deposit (this enables monitoring automatically)
+            deploy_new_token_and_deposit(
+                :token_bridge_address,
+                :l1_bridge_address,
+                :l1_token,
+                :depositor,
+                :l2_recipient,
+                amount_to_deposit: amount,
+            );
+
+            // Manually disable monitoring to simulate legacy state
+            starknet::testing::set_contract_address(token_bridge_address);
+            let mut token_bridge_state = super::contract_state_for_testing();
+            token_bridge_state
+                .l1_locked_amount
+                .write(l1_token, super::LockedAmount { monitoring_enabled: false, amount: 0 });
+
+            // Enable monitoring with locked_amount = 0 (should use L2 supply)
+            set_contract_address_as_caller();
+            set_caller_as_app_role_admin_app_governor(:token_bridge_address);
+            let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+            token_bridge_admin.enable_locked_amount_monitoring(:l1_token, locked_amount: 0);
+
+            // Verify it used L2 total supply
+            starknet::testing::set_contract_address(token_bridge_address);
+            let mut token_bridge_state = super::contract_state_for_testing();
+            assert_eq!(
+                token_bridge_state.l1_locked_amount.read(l1_token),
+                super::LockedAmount { monitoring_enabled: true, amount: amount },
+            );
+        }
+
+        #[test]
+        fn test_enable_locked_amount_monitoring_with_explicit_amount() {
+            let (l1_bridge_address, l1_token, _) = get_default_l1_addresses();
+            let token_bridge_address = deploy_token_bridge();
+            let depositor: EthAddress = DEFAULT_DEPOSITOR_ETH_ADDRESS.try_into().unwrap();
+            let l2_recipient = INITIAL_OWNER;
+            let amount = DEFAULT_AMOUNT;
+            let explicit_locked_amount: u256 = 500;
+
+            // Deploy token and deposit
+            deploy_new_token_and_deposit(
+                :token_bridge_address,
+                :l1_bridge_address,
+                :l1_token,
+                :depositor,
+                :l2_recipient,
+                amount_to_deposit: amount,
+            );
+
+            // Manually disable monitoring to simulate legacy state
+            starknet::testing::set_contract_address(token_bridge_address);
+            let mut token_bridge_state = super::contract_state_for_testing();
+            token_bridge_state
+                .l1_locked_amount
+                .write(l1_token, super::LockedAmount { monitoring_enabled: false, amount: 0 });
+
+            // Enable monitoring with explicit amount
+            set_contract_address_as_caller();
+            set_caller_as_app_role_admin_app_governor(:token_bridge_address);
+            let token_bridge_admin = get_token_bridge_admin(:token_bridge_address);
+            token_bridge_admin
+                .enable_locked_amount_monitoring(:l1_token, locked_amount: explicit_locked_amount);
+
+            // Verify it used explicit amount
+            starknet::testing::set_contract_address(token_bridge_address);
+            let mut token_bridge_state = super::contract_state_for_testing();
+            assert_eq!(
+                token_bridge_state.l1_locked_amount.read(l1_token),
+                super::LockedAmount { monitoring_enabled: true, amount: explicit_locked_amount },
             );
         }
     }

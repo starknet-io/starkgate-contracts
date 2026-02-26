@@ -18,38 +18,21 @@ use strk::interfaces::{
 pub const DEFAULT_UPGRADE_DELAY: u64 = 12345;
 pub const DECIMALS: u8 = 18;
 
-// ==================== Address Helpers ====================
+// ==================== Address Constants ====================
 
-pub fn caller() -> ContractAddress {
-    15.try_into().unwrap()
-}
-
-pub fn not_caller() -> ContractAddress {
-    16.try_into().unwrap()
-}
-
-pub fn initial_owner() -> ContractAddress {
-    17.try_into().unwrap()
-}
-
-pub fn permitted_minter() -> ContractAddress {
-    18.try_into().unwrap()
-}
-
-pub fn arbitrary_address() -> ContractAddress {
-    3563.try_into().unwrap()
-}
-
-pub fn arbitrary_user() -> ContractAddress {
-    7171.try_into().unwrap()
-}
+pub const CALLER: ContractAddress = 15.try_into().unwrap();
+pub const NOT_CALLER: ContractAddress = 16.try_into().unwrap();
+pub const INITIAL_OWNER: ContractAddress = 17.try_into().unwrap();
+pub const PERMITTED_MINTER: ContractAddress = 18.try_into().unwrap();
+pub const ARBITRARY_ADDRESS: ContractAddress = 3563.try_into().unwrap();
+pub const ARBITRARY_USER: ContractAddress = 7171.try_into().unwrap();
 
 pub fn set_contract_address_as_caller() {
-    starknet::testing::set_contract_address(caller());
+    starknet::testing::set_contract_address(CALLER);
 }
 
 pub fn set_contract_address_as_not_caller() {
-    starknet::testing::set_contract_address(not_caller());
+    starknet::testing::set_contract_address(NOT_CALLER);
 }
 
 // ==================== Dispatcher Getters ====================
@@ -131,8 +114,8 @@ pub fn deploy_lockable_token(
 ) -> ContractAddress {
     let calldata = get_lockable_token_deployment_calldata(
         :initial_owner,
-        permitted_minter: permitted_minter(),
-        governance_admin: caller(),
+        permitted_minter: PERMITTED_MINTER,
+        governance_admin: CALLER,
         :initial_supply,
     );
 
@@ -166,7 +149,7 @@ pub fn deploy_votes_lock(locked_token: ContractAddress) -> ContractAddress {
 
 /// Deploys both lockable and votes lock tokens, returning (lockable, votes_lock).
 pub fn deploy_lock_and_votes_tokens(initial_supply: u256) -> (ContractAddress, ContractAddress) {
-    let lockable_token = deploy_lockable_token(initial_owner: caller(), :initial_supply);
+    let lockable_token = deploy_lockable_token(initial_owner: CALLER, :initial_supply);
     let votes_lock_token = deploy_votes_lock(locked_token: lockable_token);
     (lockable_token, votes_lock_token)
 }
@@ -182,14 +165,14 @@ pub fn deploy_lock_and_votes_tokens_with_owner(
 
 /// Simple deployment with default values.
 pub fn simple_deploy_lockable_token() -> ContractAddress {
-    deploy_lockable_token(initial_owner: initial_owner(), initial_supply: 1000_u256)
+    deploy_lockable_token(initial_owner: INITIAL_OWNER, initial_supply: 1000_u256)
 }
 
 // ==================== Role Helpers ====================
 
 pub fn set_caller_as_upgrade_governor(replaceable_address: ContractAddress) {
     let contract_roles = get_roles(contract_address: replaceable_address);
-    contract_roles.register_upgrade_governor(account: caller());
+    contract_roles.register_upgrade_governor(account: CALLER);
 }
 
 // ==================== Event Helpers ====================

@@ -19,25 +19,14 @@ pub fn SYMBOL() -> ByteArray {
     "TT"
 }
 
-// Address helpers
-pub fn caller() -> ContractAddress {
-    15.try_into().unwrap()
-}
-
-pub fn initial_owner() -> ContractAddress {
-    17.try_into().unwrap()
-}
-
-pub fn permitted_minter() -> ContractAddress {
-    18.try_into().unwrap()
-}
-
-pub fn arbitrary_user() -> ContractAddress {
-    7171.try_into().unwrap()
-}
+// Address constants
+pub const CALLER: ContractAddress = 15.try_into().unwrap();
+pub const INITIAL_OWNER: ContractAddress = 17.try_into().unwrap();
+pub const PERMITTED_MINTER: ContractAddress = 18.try_into().unwrap();
+pub const ARBITRARY_USER: ContractAddress = 7171.try_into().unwrap();
 
 fn set_contract_address_as_caller() {
-    starknet::testing::set_contract_address(caller());
+    starknet::testing::set_contract_address(CALLER);
 }
 
 // Dispatcher getters
@@ -96,15 +85,13 @@ pub fn deploy_l2_token(
     initial_owner: ContractAddress, permitted_minter: ContractAddress, initial_supply: u256,
 ) -> ContractAddress {
     deploy_mintable_token(
-        :initial_owner, :permitted_minter, :initial_supply, governance_admin: caller(),
+        :initial_owner, :permitted_minter, :initial_supply, governance_admin: CALLER,
     )
 }
 
 /// Simple deployment with default values.
 pub fn simple_deploy_token() -> ContractAddress {
     deploy_l2_token(
-        initial_owner: initial_owner(),
-        permitted_minter: permitted_minter(),
-        initial_supply: 1000_u256,
+        initial_owner: INITIAL_OWNER, permitted_minter: PERMITTED_MINTER, initial_supply: 1000_u256,
     )
 }

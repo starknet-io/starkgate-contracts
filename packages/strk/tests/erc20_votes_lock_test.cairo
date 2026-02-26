@@ -6,8 +6,8 @@ use starknet::testing::set_contract_address;
 use starknet::{ContractAddress, get_contract_address};
 use strk::interfaces::{IMintableLockDispatcherTrait, ITokenLockDispatcherTrait};
 use super::test_utils::{
-    arbitrary_user, caller, deploy_lock_and_votes_tokens, deploy_votes_lock, get_erc20_token,
-    get_erc20_votes_token, get_mintable_lock_interface, get_token_lock_interface, not_caller,
+    ARBITRARY_USER, CALLER, NOT_CALLER, deploy_lock_and_votes_tokens, deploy_votes_lock,
+    get_erc20_token, get_erc20_votes_token, get_mintable_lock_interface, get_token_lock_interface,
     set_contract_address_as_caller, set_contract_address_as_not_caller,
 };
 
@@ -101,9 +101,9 @@ fn votes_token_action(
             set_contract_address(address: lockable_token);
             mintable_lock_interface
                 .permissioned_lock_and_delegate(
-                    account: caller(), delegatee: delegate_account, :amount,
+                    account: CALLER, delegatee: delegate_account, :amount,
                 );
-            set_contract_address(address: caller());
+            set_contract_address(address: CALLER);
         },
     }
 }
@@ -394,7 +394,7 @@ fn test_happy_flow_votes_lock_unlock_two_accounts() {
     let locked_amount = 1000_u256;
     let funds_of_first_account = 100_u256;
     let funds_of_second_account = locked_amount - funds_of_first_account;
-    transfer(erc20_token: lockable_token, recipient: not_caller(), amount: funds_of_second_account);
+    transfer(erc20_token: lockable_token, recipient: NOT_CALLER, amount: funds_of_second_account);
 
     increase_allowance(
         erc20_token: lockable_token, spender: votes_lock_token, added_value: funds_of_first_account,
@@ -439,7 +439,7 @@ fn test_happy_flow_lock_transfer_and_unlock() {
     lock_and_verify_total_supply_and_balance(
         :votes_lock_token, :lockable_token, amount: locked_amount,
     );
-    transfer(erc20_token: votes_lock_token, recipient: not_caller(), amount: locked_amount);
+    transfer(erc20_token: votes_lock_token, recipient: NOT_CALLER, amount: locked_amount);
     set_contract_address_as_not_caller();
     unlock_and_verify_total_supply_and_balance(
         :votes_lock_token, :lockable_token, amount: locked_amount,
@@ -452,7 +452,7 @@ fn test_happy_flow_permissioned_lock_and_delegate() {
         initial_supply: 1000_u256,
     );
 
-    let delegatee = arbitrary_user();
+    let delegatee = ARBITRARY_USER;
     let locked_amount = 100_u256;
     increase_allowance(
         erc20_token: lockable_token, spender: votes_lock_token, added_value: locked_amount,
@@ -465,15 +465,14 @@ fn test_happy_flow_permissioned_lock_and_delegate() {
     let erc20_votes_lock_interface = get_erc20_token(l2_token: votes_lock_token);
     let erc20_votes_token_interface = get_erc20_votes_token(l2_token: votes_lock_token);
 
-    let delegatee = arbitrary_user();
+    let delegatee = ARBITRARY_USER;
     assert(
         erc20_votes_lock_interface.balance_of(account: delegatee) == 0,
         'ERROR_VOTES_TOKEN_BAL_NO_CALLER',
     );
 
     assert(
-        erc20_votes_token_interface.delegates(account: caller()) == delegatee,
-        'UNEXPECTED_DELEGATEE',
+        erc20_votes_token_interface.delegates(account: CALLER) == delegatee, 'UNEXPECTED_DELEGATEE',
     );
     assert(
         erc20_votes_token_interface.get_votes(account: delegatee) == locked_amount,
@@ -492,7 +491,7 @@ fn test_invalid_caller_permissioned_lock_and_delegate() {
     set_contract_address(address: not_lockable_contract);
     let mintable_lock_interface = get_mintable_lock_interface(l2_token: votes_lock_token);
     mintable_lock_interface
-        .permissioned_lock_and_delegate(account: caller(), delegatee: not_caller(), amount: 1);
+        .permissioned_lock_and_delegate(account: CALLER, delegatee: NOT_CALLER, amount: 1);
 }
 
 // Flow of the test:
@@ -506,7 +505,7 @@ fn test_happy_flow_transfer_and_permissioned_and_delegate() {
         initial_supply: 1000_u256,
     );
 
-    let delegatee = arbitrary_user();
+    let delegatee = ARBITRARY_USER;
     let first_locked_amount = 100_u256;
     increase_allowance(
         erc20_token: lockable_token, spender: votes_lock_token, added_value: first_locked_amount,
@@ -547,7 +546,7 @@ fn test_overdraft_permissioned_lock_and_delegate() {
         initial_supply: 1000_u256,
     );
 
-    let delegatee = arbitrary_user();
+    let delegatee = ARBITRARY_USER;
     let locked_amount = 100_u256;
     increase_allowance(
         erc20_token: lockable_token, spender: votes_lock_token, added_value: locked_amount,

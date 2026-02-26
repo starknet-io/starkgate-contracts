@@ -25,30 +25,19 @@ pub const DEFAULT_L1_TOKEN_ETH_ADDRESS: felt252 = 1337;
 pub const DEFAULT_INITIAL_SUPPLY_LOW: u128 = 1000;
 pub const DEFAULT_INITIAL_SUPPLY_HIGH: u128 = 0;
 
-// ==================== Address Helpers ====================
+// ==================== Address Constants ====================
 
-pub fn caller() -> ContractAddress {
-    15.try_into().unwrap()
-}
-
-pub fn not_caller() -> ContractAddress {
-    16.try_into().unwrap()
-}
-
-pub fn initial_owner() -> ContractAddress {
-    17.try_into().unwrap()
-}
-
-pub fn permitted_minter() -> ContractAddress {
-    18.try_into().unwrap()
-}
+pub const CALLER: ContractAddress = 15.try_into().unwrap();
+pub const NOT_CALLER: ContractAddress = 16.try_into().unwrap();
+pub const INITIAL_OWNER: ContractAddress = 17.try_into().unwrap();
+pub const PERMITTED_MINTER: ContractAddress = 18.try_into().unwrap();
 
 pub fn set_contract_address_as_caller() {
-    starknet::testing::set_contract_address(caller());
+    starknet::testing::set_contract_address(CALLER);
 }
 
 pub fn set_contract_address_as_not_caller() {
-    starknet::testing::set_contract_address(not_caller());
+    starknet::testing::set_contract_address(NOT_CALLER);
 }
 
 // ==================== Dispatcher Getters ====================
@@ -81,17 +70,9 @@ pub fn get_mintable_token(l2_token: ContractAddress) -> IMintableTokenDispatcher
 
 // ==================== Default Helpers ====================
 
-pub fn default_amount() -> u256 {
-    u256 { low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH }
-}
-
-pub fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
-    (
-        DEFAULT_L1_BRIDGE_ETH_ADDRESS.try_into().unwrap(),
-        DEFAULT_L1_TOKEN_ETH_ADDRESS.try_into().unwrap(),
-        DEFAULT_L1_RECIPIENT.try_into().unwrap(),
-    )
-}
+pub const DEFAULT_AMOUNT: u256 = u256 {
+    low: DEFAULT_INITIAL_SUPPLY_LOW, high: DEFAULT_INITIAL_SUPPLY_HIGH,
+};
 
 pub fn get_l1_bridge_address() -> EthAddress {
     DEFAULT_L1_BRIDGE_ETH_ADDRESS.try_into().unwrap()
@@ -105,6 +86,10 @@ pub fn get_l1_recipient() -> EthAddress {
     DEFAULT_L1_RECIPIENT.try_into().unwrap()
 }
 
+pub fn get_default_l1_addresses() -> (EthAddress, EthAddress, EthAddress) {
+    (get_l1_bridge_address(), get_l1_token_address(), get_l1_recipient())
+}
+
 // ==================== Class Hash Helpers ====================
 
 pub fn stock_erc20_class_hash() -> ClassHash {
@@ -116,12 +101,12 @@ pub fn stock_erc20_class_hash() -> ClassHash {
 /// Deploys the TokenBridge contract.
 pub fn deploy_token_bridge() -> ContractAddress {
     let mut calldata: Array<felt252> = array![];
-    let _caller = caller();
+    let _caller = CALLER;
     _caller.serialize(ref calldata);
     DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
 
     set_contract_address_as_caller();
-    starknet::testing::set_caller_address(caller());
+    starknet::testing::set_caller_address(CALLER);
 
     let (token_bridge_address, _) = deploy_syscall(
         TokenBridge::TEST_CLASS_HASH.try_into().unwrap(), 0, calldata.span(), false,
@@ -134,23 +119,23 @@ pub fn deploy_token_bridge() -> ContractAddress {
 
 pub fn set_caller_as_upgrade_governor(replaceable_address: ContractAddress) {
     let contract_roles = get_roles(contract_address: replaceable_address);
-    contract_roles.register_upgrade_governor(account: caller());
+    contract_roles.register_upgrade_governor(account: CALLER);
 }
 
 pub fn set_caller_as_app_role_admin_app_governor(token_bridge_address: ContractAddress) {
     let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-    token_bridge_roles.register_app_role_admin(account: caller());
-    token_bridge_roles.register_app_governor(account: caller());
+    token_bridge_roles.register_app_role_admin(account: CALLER);
+    token_bridge_roles.register_app_governor(account: CALLER);
 }
 
 pub fn set_caller_as_security_admin(token_bridge_address: ContractAddress) {
     let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-    token_bridge_roles.register_security_admin(account: caller());
+    token_bridge_roles.register_security_admin(account: CALLER);
 }
 
 pub fn set_caller_as_security_agent(token_bridge_address: ContractAddress) {
     let token_bridge_roles = get_roles(contract_address: token_bridge_address);
-    token_bridge_roles.register_security_agent(account: caller());
+    token_bridge_roles.register_security_agent(account: CALLER);
 }
 
 // ==================== Bridge Setup Helpers ====================
@@ -167,7 +152,7 @@ pub fn prepare_bridge_for_deploy_token(
 
     token_bridge_admin.set_l1_bridge(:l1_bridge_address);
     token_bridge_admin.set_erc20_class_hash(erc20_class_hash: stock_erc20_class_hash());
-    token_bridge_admin.set_l2_token_governance(l2_token_governance: caller());
+    token_bridge_admin.set_l2_token_governance(l2_token_governance: CALLER);
 
     starknet::testing::set_contract_address(orig);
 }

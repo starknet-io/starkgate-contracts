@@ -35,4 +35,10 @@ pub trait ITokenBridgeAdmin<TContractState> {
     fn set_l2_token_governance(ref self: TContractState, l2_token_governance: ContractAddress);
     fn enable_withdrawal_limit(ref self: TContractState, l1_token: EthAddress);
     fn disable_withdrawal_limit(ref self: TContractState, l1_token: EthAddress);
+    /// Enables locked amount monitoring for a token.
+    /// If locked_amount is 0, uses the L2 token's total supply.
+    /// Otherwise, uses the provided locked_amount.
+    fn enable_locked_amount_monitoring(
+        ref self: TContractState, l1_token: EthAddress, locked_amount: u256,
+    );
 }
