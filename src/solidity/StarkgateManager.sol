@@ -3,7 +3,7 @@ pragma solidity ^0.8.20;
 
 import "starkware/solidity/components/Roles.sol";
 import "starkware/solidity/interfaces/Identity.sol";
-import "starkware/solidity/interfaces/ProxySupport.sol";
+import "starkware/solidity/upgrade/ProxySupportImpl.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "src/solidity/IStarkgateBridge.sol";
@@ -11,7 +11,7 @@ import "src/solidity/IStarkgateManager.sol";
 import "src/solidity/IStarkgateRegistry.sol";
 import "src/solidity/StarkgateConstants.sol";
 
-contract StarkgateManager is Identity, IStarkgateManager, ProxySupport {
+contract StarkgateManager is Identity, IStarkgateManager, ProxySupportImpl, Roles {
     using Addresses for address;
     // Named storage slot tags.
     string internal constant REGISTRY_TAG = "STARKGATE_MANAGER_REGISTRY_SLOT_TAG";
@@ -20,6 +20,8 @@ contract StarkgateManager is Identity, IStarkgateManager, ProxySupport {
     event ExistingBridgeAdded(address indexed token, address indexed bridge);
     event TokenDeactivated(address indexed token, address indexed sender);
     event TokenBlocked(address indexed token, address indexed sender);
+
+    constructor() Roles(false) {}
 
     function getRegistry() external view returns (address) {
         return registry();

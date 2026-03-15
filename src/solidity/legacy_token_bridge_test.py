@@ -415,7 +415,7 @@ def test_new_proxy_erc20_bridge_upgrade(
     If the legacy bridge was deployed on a new Proxy,
     the governance init must be done with zero address.
     """
-    _abi = load_contract("Proxy")["abi"]
+    _abi = load_contract("ProxyV5")["abi"]
     bridge_proxy = legacy_tester_erc20_new_proxy_bridge.replace_abi(_abi)
     assert bridge_proxy.isGovernanceAdmin.call(governor.address), "Roles not initialized!"
     assert bridge_proxy.implementation.call() != ZERO_ADDRESS

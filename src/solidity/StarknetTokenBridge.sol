@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
 
+import "starkware/solidity/components/Roles.sol";
 import "starkware/solidity/interfaces/Identity.sol";
-import "starkware/solidity/interfaces/ProxySupport.sol";
+import "starkware/solidity/upgrade/ProxySupportImpl.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 import "starkware/solidity/libraries/Transfers.sol";
@@ -26,7 +27,8 @@ contract StarknetTokenBridge is
     Identity,
     Fees,
     StarknetTokenStorage,
-    ProxySupport
+    ProxySupportImpl,
+    Roles
 {
     using Addresses for address;
     using Felt252 for string;
@@ -90,8 +92,10 @@ contract StarknetTokenBridge is
     uint256 constant N_DEPOSIT_PAYLOAD_ARGS = 5;
     uint256 constant DEPOSIT_MESSAGE_FIXED_SIZE = 1;
 
+    constructor() Roles(false) {}
+
     function identify() external pure virtual returns (string memory) {
-        return "StarkWare_StarknetTokenBridge_2.0_5";
+        return "StarkWare_StarknetTokenBridge_2.0_6";
     }
 
     function validateInitData(bytes calldata data) internal view virtual override {
@@ -203,6 +207,10 @@ contract StarknetTokenBridge is
     function isServicingToken(address token) public view returns (bool) {
         TokenStatus status = tokenSettings()[token].tokenStatus;
         return (status == TokenStatus.Pending || status == TokenStatus.Active);
+    }
+
+    function getL2Bridge() external view returns (uint256) {
+        return l2TokenBridge();
     }
 
     /**

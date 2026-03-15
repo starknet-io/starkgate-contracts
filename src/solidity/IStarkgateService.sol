@@ -7,4 +7,9 @@ interface IStarkgateService {
     Returns True if the calling contract is providing a service for the token, otherwise false.
    */
     function isServicingToken(address token) external view returns (bool);
+
+    /**
+    Gets the address L2 bridge connected to this bridge.
+     */
+    function getL2Bridge() external view returns (uint256);
 }

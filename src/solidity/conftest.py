@@ -67,7 +67,7 @@ def event_loop():
 
 
 TestERC20 = load_contract("TestERC20")
-Proxy = load_contract("Proxy")
+Proxy = load_contract("ProxyV5")
 LegacyProxy = load_legacy_contract("Proxy")
 LegacyEthBridge = load_legacy_contract("StarknetEthBridge")
 LegacyERC20Bridge = load_legacy_contract("StarknetERC20Bridge")
@@ -590,6 +590,7 @@ class StarknetERC20BridgeWrapper(TokenBridgeWrapper):
             ),
         )
         self.contract.setTokenStatus(self.mock_erc20_contract.address, ACTIVE)
+        self.contract.setBridgedToken(self.mock_erc20_contract.address)
 
         INITIAL_BALANCE = 10**20
         for account in (self.default_user, self.non_default_user):
@@ -668,6 +669,7 @@ class EthBridgeWrapper(TokenBridgeWrapper):
             ),
         )
         self.contract.setTokenStatus(L1_TOKEN_ADDRESS_OF_ETH, ACTIVE)
+        self.contract.setBridgedToken(L1_TOKEN_ADDRESS_OF_ETH)
         self.eth_test_utils = eth_test_utils
 
     def token_address(self) -> str:

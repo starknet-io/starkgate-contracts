@@ -1,5 +1,4 @@
 src/solidity/FeltToStrTester.sol
-src/solidity/ResetTokenEIC.sol
 src/solidity/StarknetTokenBridgeTester.sol
 src/solidity/StarknetEthBridge.sol
 src/solidity/StarknetERC20Bridge.sol
@@ -10,9 +9,8 @@ src/solidity/SelfRemoveTester.sol
 src/solidity/StarkgateRegistry.sol
 src/solidity/StarkgateManager.sol
 starkware/solidity/test_contracts/TestERC20.sol
-starkware/solidity/upgrade/Proxy.sol
+starkware/solidity/upgrade/ProxyV5.sol
 starkware/starknet/testing/MockStarknetMessaging.sol
 src/solidity/StarkgateUpgradeAssistExternalInitializer.sol
 src/solidity/ConfigureSingleBridgeEIC.sol
 src/solidity/test_contracts/TestFees.sol
-src/solidity/WithBatcher.sol

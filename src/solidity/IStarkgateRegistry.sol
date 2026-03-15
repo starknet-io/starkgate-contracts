@@ -8,6 +8,11 @@ interface IStarkgateRegistry {
     function getBridge(address token) external view returns (address);
 
     /**
+      Returns the L2 bridge that handles the given token.
+    */
+    function getL2Bridge(address token) external view returns (uint256);
+
+    /**
       Add a mapping between a token and the bridge handling it.
     */
     function enlistToken(address token, address bridge) external;

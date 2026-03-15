@@ -23,10 +23,18 @@ jobs:
                 then
                   sudo apt-get install -y musl-tools
                 fi
+
+            - name: Setup Scarb
+              uses: software-mansion/setup-scarb@v1
+              with:
+                scarb-version: "2.15.1"
+
             - name: Setup...
               run: scripts/setup.sh
+
             - name: Build in ${{ matrix.target }}
               run: ./scripts/release_tar.sh ${{ matrix.target }}
+
             - name: Upload binaries to release
               uses: svenstaro/upload-release-action@v2
               with:

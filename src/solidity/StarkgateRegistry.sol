@@ -5,11 +5,11 @@ import "src/solidity/IStarkgateRegistry.sol";
 import "src/solidity/IStarkgateService.sol";
 import "src/solidity/StarkgateConstants.sol";
 import "starkware/solidity/interfaces/Identity.sol";
-import "starkware/solidity/interfaces/ProxySupport.sol";
+import "starkware/solidity/upgrade/ProxySupportImpl.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "starkware/solidity/libraries/NamedStorage.sol";
 
-contract StarkgateRegistry is Identity, ProxySupport, IStarkgateRegistry {
+contract StarkgateRegistry is Identity, ProxySupportImpl, IStarkgateRegistry {
     using Addresses for address;
     // Named storage slot tags.
     string internal constant MANAGER_TAG = "STARKGATE_REGISTRY_MANAGER_SLOT_TAG";
@@ -47,7 +47,7 @@ contract StarkgateRegistry is Identity, ProxySupport, IStarkgateRegistry {
     }
 
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarkgateRegistry_2.0_1";
+        return "StarkWare_StarkgateRegistry_2.0_6";
     }
 
     /*
@@ -79,6 +79,11 @@ contract StarkgateRegistry is Identity, ProxySupport, IStarkgateRegistry {
 
     function getBridge(address token) external view returns (address) {
         return tokenToBridge()[token];
+    }
+
+    function getL2Bridge(address token) external view returns (uint256) {
+        IStarkgateService l1Bridge = IStarkgateService(tokenToBridge()[token]);
+        return l1Bridge.getL2Bridge();
     }
 
     /**

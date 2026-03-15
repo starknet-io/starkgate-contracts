@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0.
 pragma solidity ^0.8.20;
 
+import "starkware/solidity/components/Roles.sol";
 import "starkware/solidity/libraries/Addresses.sol";
 import "src/solidity/Fees.sol";
 import "src/solidity/LegacyBridge.sol";
@@ -9,7 +10,7 @@ contract StarknetEthBridge is LegacyBridge {
     using Addresses for address;
 
     function identify() external pure override returns (string memory) {
-        return "StarkWare_StarknetEthBridge_2.0_5";
+        return "StarkWare_StarknetEthBridge_2.0_6";
     }
 
     function acceptDeposit(
