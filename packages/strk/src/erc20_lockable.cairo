@@ -20,6 +20,7 @@ pub mod ERC20Lockable {
         StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
@@ -34,6 +35,7 @@ pub mod ERC20Lockable {
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
 
@@ -45,7 +47,9 @@ pub mod ERC20Lockable {
 
     // External - Roles
     #[abi(embed_v0)]
-    impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
+    impl GovernanceRolesImpl = RolesComponent::GovernanceRolesImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
 
     // External - Replaceability
     #[abi(embed_v0)]
@@ -64,6 +68,8 @@ pub mod ERC20Lockable {
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -87,6 +93,8 @@ pub mod ERC20Lockable {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]

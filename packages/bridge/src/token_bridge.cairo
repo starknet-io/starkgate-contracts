@@ -30,6 +30,7 @@ pub mod TokenBridge {
         get_caller_address, get_contract_address,
     };
     use starkware_utils::byte_array::short_string_to_byte_array;
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
@@ -59,6 +60,7 @@ pub mod TokenBridge {
     // Components
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
 
@@ -70,6 +72,8 @@ pub mod TokenBridge {
     // External - Roles
     #[abi(embed_v0)]
     impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -78,6 +82,8 @@ pub mod TokenBridge {
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -106,6 +112,8 @@ pub mod TokenBridge {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
@@ -656,6 +664,7 @@ pub mod TokenBridge {
             use openzeppelin::token::erc20::{ERC20Component, ERC20HooksEmptyImpl};
             use starknet::ContractAddress;
             use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+            use starkware_utils::components::common_roles::CommonRolesComponent;
             use starkware_utils::components::roles::RolesComponent;
             use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
             use starkware_utils::interfaces::mintable_token::{
@@ -663,6 +672,7 @@ pub mod TokenBridge {
             };
 
             component!(path: ERC20Component, storage: erc20, event: ERC20Event);
+            component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
             component!(path: RolesComponent, storage: roles, event: RolesEvent);
             component!(
                 path: AccessControlComponent, storage: access_control, event: AccessControlEvent,
@@ -687,6 +697,8 @@ pub mod TokenBridge {
                 #[substorage(v0)]
                 erc20: ERC20Component::Storage,
                 #[substorage(v0)]
+                common_roles: CommonRolesComponent::Storage,
+                #[substorage(v0)]
                 roles: RolesComponent::Storage,
                 #[substorage(v0)]
                 access_control: AccessControlComponent::Storage,
@@ -700,6 +712,8 @@ pub mod TokenBridge {
             enum Event {
                 #[flat]
                 ERC20Event: ERC20Component::Event,
+                #[flat]
+                CommonRolesEvent: CommonRolesComponent::Event,
                 #[flat]
                 RolesEvent: RolesComponent::Event,
                 #[flat]

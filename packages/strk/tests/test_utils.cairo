@@ -5,7 +5,9 @@ use openzeppelin_interfaces::governance::votes::IVotesDispatcher;
 use starknet::ContractAddress;
 use starknet::syscalls::deploy_syscall;
 use starkware_utils::components::replaceability::interface::IReplaceableDispatcher;
-use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDispatcherTrait};
+use starkware_utils::components::roles::interface::{
+    IGovernanceRolesDispatcher, IGovernanceRolesDispatcherTrait,
+};
 use strk::erc20_lockable::ERC20Lockable;
 use strk::erc20_votes_lock::ERC20VotesLock;
 use strk::interfaces::{
@@ -61,8 +63,8 @@ pub fn get_mintable_lock_interface(l2_token: ContractAddress) -> IMintableLockDi
     IMintableLockDispatcher { contract_address: l2_token }
 }
 
-pub fn get_roles(contract_address: ContractAddress) -> IRolesDispatcher {
-    IRolesDispatcher { contract_address }
+pub fn get_roles(contract_address: ContractAddress) -> IGovernanceRolesDispatcher {
+    IGovernanceRolesDispatcher { contract_address }
 }
 
 pub fn get_replaceable(replaceable_address: ContractAddress) -> IReplaceableDispatcher {

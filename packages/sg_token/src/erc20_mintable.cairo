@@ -18,6 +18,7 @@ pub mod ERC20Mintable {
     use sg_token::interfaces::{IMintableToken, IMintableTokenCamelOnly};
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
@@ -27,6 +28,7 @@ pub mod ERC20Mintable {
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
 
@@ -43,7 +45,9 @@ pub mod ERC20Mintable {
 
     // External - Roles
     #[abi(embed_v0)]
-    impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
+    impl GovernanceRolesImpl = RolesComponent::GovernanceRolesImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
 
     // Internal
     impl ERC20InternalImpl = ERC20Component::InternalImpl<ContractState>;
@@ -59,6 +63,8 @@ pub mod ERC20Mintable {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         replaceability: ReplaceabilityComponent::Storage,
+        #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         roles: RolesComponent::Storage,
         // --- Token specific ---
@@ -78,6 +84,8 @@ pub mod ERC20Mintable {
         SRC5Event: SRC5Component::Event,
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
     }
