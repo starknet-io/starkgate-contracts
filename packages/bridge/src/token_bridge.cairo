@@ -46,7 +46,25 @@ pub mod TokenBridge {
     const DEFAULT_DAILY_WITHDRAW_LIMIT_PCT: u8 = 5;
     const SECONDS_IN_DAY: u64 = 86400;
     const DEFAULT_UPGRADE_DELAY: u64 = 0;
+
+    /// Minimum timelock applied to bridge-deployed L2 tokens.
+    ///
+    /// SECURITY: a delay of 0 removes the entire guarantee that `ReplaceabilityComponent`
+    /// exists to provide. With `upgrade_delay == 0`, a compromised
+    /// `governance_admin`/`upgrade_governor` can call `replace_class_syscall` and rewrite a
+    /// token's logic in the very next block, with no window in which depositors could exit.
+    /// Bridge-deployed tokens are therefore created with a non-zero delay; every other
+    /// deployment path in this repository already uses one (the STRK test fixtures use
+    /// `DEFAULT_UPGRADE_DELAY: u64 = 12345`).
+    const MIN_UPGRADE_DELAY: u64 = 3600; // 1 hour
     const REMAINING_QUOTA_OFFSET: u256 = 1;
+
+    /// Smallest daily withdrawal limit the bridge will ever impose, in token base units.
+    ///
+    /// Prevents the truncating division in `get_daily_withdrawal_limit` from yielding a limit
+    /// of 0 for low-supply tokens, which would make every non-zero withdrawal revert and
+    /// permanently brick withdrawals until a `security_admin` intervened.
+    const MIN_DAILY_WITHDRAWAL_LIMIT: u256 = 1;
 
     /// Tracks locked amount per L1 token with opt-in monitoring.
     /// - monitoring_enabled: if false, locked amount checks are skipped (legacy behavior)
@@ -94,12 +112,24 @@ pub mod TokenBridge {
         l2_token_governance: ContractAddress,
         l1_l2_token_map: Map<EthAddress, ContractAddress>,
         l2_l1_token_map: Map<ContractAddress, EthAddress>,
-        // --- Withdrawal Limits ---
+        // --- Legacy (for upgraded bridges) ---
+        //
+        // SECURITY: `l2_token` must keep the storage base it was originally deployed with.
+        // Cairo assigns sub-storage bases by declaration order, so inserting any new field
+        // *before* this one shifts it to a different slot. On upgrade, `self.l2_token.read()`
+        // would then return 0 for an existing single-token bridge, which makes
+        // `initiate_withdraw`/`handle_deposit` revert with L2_TOKEN_NOT_SET and lets
+        // `handle_token_deployment` pass the DEPLOY_TOKEN_DISALLOWED guard — i.e. the
+        // withdrawal path is bricked.
+        //
+        // Therefore every field added to this struct MUST be appended *after* `l2_token`,
+        // never before it. The three withdrawal-limit fields below were previously declared
+        // ahead of this one and have been moved after it for that reason.
+        l2_token: ContractAddress,
+        // --- Withdrawal Limits (added after `l2_token`; do not reorder) ---
         withdrawal_limit_applied: Map<ContractAddress, bool>,
         remaining_intraday_withdraw_quota: Map<(ContractAddress, u64), u256>,
         daily_withdrawal_limit_pct: u8,
-        // --- Legacy (for upgraded bridges) ---
-        l2_token: ContractAddress,
         // --- L1 Locked Amount ---
         l1_locked_amount: Map<EthAddress, LockedAmount>,
     }
@@ -537,7 +567,8 @@ pub mod TokenBridge {
         initial_recipient.serialize(ref calldata);
         permitted_minter.serialize(ref calldata);
         l2_token_governance.serialize(ref calldata);
-        DEFAULT_UPGRADE_DELAY.serialize(ref calldata);
+        // Non-zero upgrade timelock for bridge-deployed tokens — see MIN_UPGRADE_DELAY.
+        MIN_UPGRADE_DELAY.serialize(ref calldata);
 
         // Deploy using l1_token as salt for uniqueness
         let (deployed_l2_token, _) = deploy_syscall(
@@ -616,7 +647,35 @@ pub mod TokenBridge {
         fn get_daily_withdrawal_limit(self: @ContractState, l2_token: ContractAddress) -> u256 {
             let total_supply = IERC20Dispatcher { contract_address: l2_token }.total_supply();
             let daily_withdrawal_limit_pct: u256 = self.daily_withdrawal_limit_pct.read().into();
-            total_supply * daily_withdrawal_limit_pct / 100
+
+            // SECURITY / DoS: the previous expression was
+            //     total_supply * pct / 100
+            // with truncating integer division. With DEFAULT_DAILY_WITHDRAW_LIMIT_PCT = 5,
+            // any token whose total supply is below 20 produced a limit of 0. Once the limit
+            // was enabled, `consume_withdrawal_quota` would then reject every non-zero
+            // withdrawal — and because the quota slot is only written on a successful
+            // consumption, it stayed 0 and the limit was recomputed as 0 on every subsequent
+            // day, permanently bricking withdrawals for that token until a
+            // `security_admin` intervened.
+            //
+            // The limit is therefore floored at MIN_DAILY_WITHDRAWAL_LIMIT so a small-supply
+            // token still has a usable (if small) daily allowance.
+            //
+            // The multiplication is also performed with explicit overflow handling: `u256`
+            // multiplication in Cairo panics on overflow, so `total_supply * pct` would
+            // revert and take every withdrawal with it. Overflow is treated as "cap" rather
+            // than as a hard failure.
+            let (scaled, overflowed) = total_supply.overflowing_mul(daily_withdrawal_limit_pct);
+            if overflowed {
+                // The true value exceeds u256; treat it as unbounded.
+                return Bounded::MAX;
+            }
+            let limit: u256 = scaled / 100;
+            if limit < MIN_DAILY_WITHDRAWAL_LIMIT {
+                MIN_DAILY_WITHDRAWAL_LIMIT
+            } else {
+                limit
+            }
         }
 
         fn consume_withdrawal_quota(
